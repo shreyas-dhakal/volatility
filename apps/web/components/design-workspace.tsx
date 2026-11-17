@@ -36,19 +36,24 @@ export function validationIsStale(record:Knowledge,data:DesignSnapshot){
 }
 
 export function DesignWorkspace({base,aiAvailable,records=[],onChange,onSettings}:{base:string;aiAvailable:boolean|null;records?:Knowledge[];onChange?:()=>Promise<void>;onSettings?:()=>void}){
- const [data,setData]=useState<DesignSnapshot|null>(null),[stage,setStage]=useState(0),[selected,setSelected]=useState('');
+ const [data,setData]=useState<DesignSnapshot|null>(null),[stage,setStage]=useState(0),[selected,setSelected]=useState(''),[intakeOpen,setIntakeOpen]=useState(false);
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const epoch=useRef(0),detail=useRef<HTMLElement|null>(null);
  async function load(){const value=await request<DesignSnapshot>(`${base}/design`);setData(value)}
  useEffect(()=>{const current=++epoch.current;setData(null);setSelected('');setStage(0);setError('');setNotice('');setLoading(true);request<DesignSnapshot>(`${base}/design`).then(value=>{if(epoch.current===current)setData(value)}).catch(e=>{if(epoch.current===current)setError(e.message)}).finally(()=>{if(epoch.current===current)setLoading(false)});return()=>{epoch.current++}},[base]);
  async function reload(){setLoading(true);setError('');try{await load()}catch(e){setData(null);setError((e as Error).message)}finally{setLoading(false)}}
  async function mutate(action:()=>Promise<unknown>,success:string){
- setBusy(true);setError('');setNotice('');try{await action();await load();setNotice(success);if(onChange)await onChange();return true}catch(e){
+ setBusy(true);setError('');setNotice('');try{
+ await action();setNotice(success);
+ try{await load()}catch(e){setData(null);setError(`Your change was saved, but the current design could not be loaded. ${(e as Error).message} Reload the design process before continuing.`);return true}
+ if(onChange){try{await onChange()}catch(e){setError(`Your change was saved. Project context could not be refreshed: ${(e as Error).message}`)}}
+ return true;
+ }catch(e){
  if(e instanceof ApiError&&e.status===409){setError('This artifact changed since you opened it. The latest version has been loaded. Review it before saving again.');await load().catch(()=>setData(null))}
  else setError((e as Error).message);return false;
  }finally{setBusy(false)}}
  const definition=stages[stage],artifacts=data?allArtifacts(data):[],lookup=new Map([...records,...artifacts].map(r=>[r.id,r]));
- const active=artifacts.find(r=>r.id===selected),blocked=data?prerequisite(data,stage):'';
+ const active=lookup.get(selected),blocked=data?prerequisite(data,stage):'';
  function open(record:Knowledge){const key=stageOf(record);if(key)setStage(stages.findIndex(s=>s.key===key));setSelected(record.id);setTimeout(()=>detail.current?.focus(),0)}
  async function patch(record:Knowledge,change:Record<string,unknown>){return mutate(()=>request(`${base}/records/${record.id}`,{method:'PATCH',body:JSON.stringify({...change,expected_version:record.version})}),'Review saved. Readiness and findings have been refreshed.')}
  return <VStack gap={6} maxWidth="75ch">
@@ -61,7 +66,7 @@ export function DesignWorkspace({base,aiAvailable,records=[],onChange,onSettings
  <HStack as="nav" aria-label="Design stages" gap={2} wrap="wrap">{stages.map((item,index)=><Button key={item.key} label={item.label} size="sm" variant={index===stage?'secondary':'ghost'} aria-current={index===stage?'step':undefined} isDisabled={busy} onClick={()=>{setStage(index);setSelected('')}}/>)}</HStack>
  <VStack gap={3}><Heading level={2}>{definition.title}</Heading><Text>{definition.help}</Text><Text type="supporting" color="secondary">Readiness indicates reviewed usable inputs. Approval does not establish design correctness.</Text></VStack>
  {aiAvailable!==true&&<VStack gap={3}><Text>{aiAvailable===null?'Checking AI configuration. Manual intake and review remain available.':'AI proposals need setup. Ask the person running Galvanise to configure an OpenAI API key on the API server. Manual intake and review remain available.'}</Text>{onSettings&&<Button label="Open connection settings" onClick={onSettings}/>}</VStack>}
- {stage===0?<UseCaseForm busy={busy} evidence={records.filter(r=>r.kind==='evidence'&&r.status!=='rejected')} save={input=>mutate(()=>post(`${base}/design/use-cases`,input),'Use case saved for human review. Approve it when it reflects the gathered case.')}/>:<VStack gap={3}>
+ {stage===0?<VStack gap={4}>{data.use_cases.length>0&&<Button label={intakeOpen?'Close use case intake':'Add detailed use case'} icon={<AppIcon icon={Plus}/>} isDisabled={busy} onClick={()=>setIntakeOpen(!intakeOpen)}/>} {(intakeOpen||!data.use_cases.length)&&<UseCaseForm busy={busy} evidence={records.filter(r=>r.kind==='evidence'&&r.status!=='rejected')} save={input=>mutate(()=>post(`${base}/design/use-cases`,input),'Use case saved for human review. Approve it when it reflects the gathered case.')}/>}</VStack>:<VStack gap={3}>
  {blocked&&<Text>{blocked}</Text>}
  {'generate' in definition&&<Button label={definition.action} icon={<AppIcon icon={GitBranch} color="inherit"/>} variant="primary" isLoading={busy} isDisabled={aiAvailable!==true||!!blocked} onClick={()=>mutate(()=>post(`${base}/design/generate`,{stage:definition.generate as DesignStage}),'Proposals saved for review. Previously approved artifacts are preserved.')}/>}
  <Text type="supporting" color="secondary">Generation is explicit. New proposals need human review; approved records are preserved.</Text>
@@ -106,10 +111,10 @@ function Reference({id,lookup,open}:{id:string;lookup:Map<string,Knowledge>;open
 }
 function ReadableDesignValue({value,lookup,open,field=''}:{value:unknown;lookup:Map<string,Knowledge>;open:(record:Knowledge)=>void;field?:string}){
  if(value===null||value===undefined)return <Text color="secondary">Not specified</Text>;
- if(typeof value==='string')return field.endsWith('_id')||field.endsWith('_ids')||field==='dependencies'?<Reference id={value} lookup={lookup} open={open}/>:<Text>{plainValue(value)}</Text>;
+ if(typeof value==='string')return field.endsWith('_id')||field.endsWith('_ids')||field==='dependencies'?<Reference id={value} lookup={lookup} open={open}/>:<Text>{({over_time:'Over time',across_customers:'Across customers',client:'Client',manager:'Manager',engine:'Engine',resource_access:'Resource access',resource:'Resource',utility:'Utility'} as Record<string,string>)[value]||plainValue(value)}</Text>;
  if(typeof value==='boolean'||typeof value==='number')return <Text>{typeof value==='boolean'?(value?'Yes':'No'):String(value)}</Text>;
  if(Array.isArray(value))return <VStack gap={2}>{value.length?value.map((item,index)=><VStack key={index} gap={2}>{field==='steps'&&<Text type="supporting">Step {index+1}</Text>}<ReadableDesignValue value={item} field={field} lookup={lookup} open={open}/></VStack>):<Text color="secondary">None recorded</Text>}</VStack>;
- return <VStack gap={4}>{Object.entries(value as Record<string,unknown>).map(([key,item])=><VStack key={key} gap={2}><Text weight="semibold">{field==='input_versions'?(lookup.get(key)?.title||`Unavailable input ${key}`):designLabel(key)}</Text><ReadableDesignValue value={item} field={key} lookup={lookup} open={open}/></VStack>)}</VStack>;
+ return <VStack gap={4}>{Object.entries(value as Record<string,unknown>).filter(([key])=>key!=='design_engine').map(([key,item])=><VStack key={key} gap={2}><Text weight="semibold">{field==='input_versions'?(lookup.get(key)?.title||`Unavailable input ${key}`):designLabel(key)}</Text><ReadableDesignValue value={item} field={key} lookup={lookup} open={open}/></VStack>)}</VStack>;
 }
 function designLabel(key:string){return ({use_case_ids:'Original detailed cases',core_use_case_ids:'Supporting core cases',core_use_case_id:'Core case',volatility_ids:'Hidden volatilities',volatility_id:'Reason for change',component_ids:'Collaborating components',changed_component_ids:'Components expected to change',unchanged_component_ids:'Components expected to stay stable',stable_contract:'Stable contract',component_role:'Component role',input_versions:'Input versions when proposed',design_engine:'From design process',axis:'Over time or across customers',hidden_change:'Change hidden by this component',dependencies:'Component dependencies'} as Record<string,string>)[key]||fieldLabel(key)}
 function ArtifactReview({record,data,lookup,open,busy,patch}:{record:Knowledge;data:DesignSnapshot;lookup:Map<string,Knowledge>;open:(record:Knowledge)=>void;busy:boolean;patch:(record:Knowledge,change:Record<string,unknown>)=>Promise<boolean>}){

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import {afterEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 vi.mock('@stylexjs/stylex',async original=>({...await original<object>(),create:(styles:Record<string,unknown>)=>Object.fromEntries(Object.keys(styles).map(k=>[k,{}]))}));
 import {DesignWorkspace} from './design-workspace';
 import type {DesignSnapshot,Knowledge} from '../lib/types';
@@ -94,4 +94,16 @@ it('shows server generation errors and preserves approved artifacts',async()=>{
 });
 it('keeps unknown truncation metadata visible and shows loading until the snapshot arrives',async()=>{
  let resolve!:(r:Response)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(r=>{resolve=r})));render(<DesignWorkspace base="/projects/p" aiAvailable={null}/>);expect(screen.getByText('Loading design artifacts…')).toBeTruthy();resolve(new Response(JSON.stringify({...empty(),truncated:true,input_limit_notice:'Only first 100 inputs included.'})));expect(await screen.findByText('Only first 100 inputs included.')).toBeTruthy();expect(screen.getByText(/Checking AI configuration/)).toBeTruthy();
+});
+it('opens evidence references as readable review details',async()=>{
+ const data=empty();data.use_cases=[record('u','use_case',{evidence_ids:['e']})];vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(data))));render(<DesignWorkspace base="/projects/p" aiAvailable records={[record('e','evidence',{quote:'Customer supplied the variation.'})]}/>);await screen.findByRole('button',{name:'Review Title u'});fireEvent.click(screen.getByRole('button',{name:'Review Title u'}));fireEvent.click(screen.getByRole('button',{name:'Title e · approved'}));expect(screen.getByText('Customer supplied the variation.')).toBeTruthy();
+});
+it('keeps existing cases immediately reviewable and reveals intake explicitly',async()=>{
+ const data=empty();data.use_cases=[record('u','use_case')];setup(data);await screen.findByRole('button',{name:'Review Title u'});expect(screen.queryByLabelText(/^Use case title/)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Add detailed use case'}));expect(screen.getByLabelText(/^Use case title/)).toBeTruthy();
+});
+it('does not present stale readiness after a failed refresh',async()=>{
+ const data=empty();data.readiness.validation=true;const fetcher=setup(data);await screen.findByRole('heading',{name:'Gather detailed use cases'});fetcher.mockResolvedValue(new Response(JSON.stringify({detail:'Connection lost; retry.'}),{status:503}));fireEvent.click(screen.getByRole('button',{name:'Reload design process'}));await screen.findByRole('alert');expect(screen.queryByText('Reviewed validation inputs are available. Check assumptions and findings before relying on this design.')).toBeNull();
+});
+it('distinguishes a saved review from a failed refresh and hides outdated readiness',async()=>{
+ const data=empty();data.use_cases=[record('u','use_case',{},'pending')];const fetcher=setup(data);await screen.findByRole('button',{name:'Review Title u'});fireEvent.click(screen.getByRole('button',{name:'Review Title u'}));fetcher.mockImplementation(async(_url,init)=>init?.method==='PATCH'?new Response(JSON.stringify({...data.use_cases[0],status:'approved',version:5})):new Response(JSON.stringify({detail:'Snapshot unavailable.'}),{status:503}));fireEvent.click(screen.getByRole('button',{name:'Approve artifact'}));expect((await screen.findByRole('alert')).textContent).toContain('Your change was saved');expect(screen.queryByRole('region',{name:'Artifact review'})).toBeNull();expect(fetcher.mock.calls.filter(([,init])=>init?.method==='PATCH')).toHaveLength(1);
 });
