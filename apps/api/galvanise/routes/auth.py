@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 import httpx
 from argon2.exceptions import VerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -45,6 +45,8 @@ def public_user(user, db):
 
 @router.post("/register")
 def register(body: Register, response: Response, db: Session = Depends(get_db)):
+    if settings.auth_mode == "clerk":
+        raise HTTPException(410, "Use Clerk sign-up")
     email = body.email.strip().lower()
     if "@" not in email or len(body.password) < 10:
         raise HTTPException(
@@ -65,6 +67,8 @@ def register(body: Register, response: Response, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(body: Login, response: Response, db: Session = Depends(get_db)):
+    if settings.auth_mode == "clerk":
+        raise HTTPException(410, "Use Clerk sign-in")
     user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
     try:
         if not user or not user.password_hash:
@@ -93,12 +97,13 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+@router.post("/github/start")
 @router.get("/github/start")
 def github_start(request: Request, db: Session = Depends(get_db)):
     if not settings.github_client_id or not settings.github_client_secret:
         raise HTTPException(503, "Configure GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET")
-    user_id = None
-    if request.cookies.get("session"):
+    user_id = get_current_user(request, db).id if settings.auth_mode == "clerk" else None
+    if settings.auth_mode == "legacy" and request.cookies.get("session"):
         user_id = get_current_user(request, db).id
     state = secrets.token_urlsafe(48)
     db.add(
@@ -109,7 +114,7 @@ def github_start(request: Request, db: Session = Depends(get_db)):
         )
     )
     db.commit()
-    response = RedirectResponse(
+    authorization_url = (
         "https://github.com/login/oauth/authorize?"
         + urlencode(
             {
@@ -120,6 +125,7 @@ def github_start(request: Request, db: Session = Depends(get_db)):
             }
         )
     )
+    response = JSONResponse({"url": authorization_url}) if settings.auth_mode == "clerk" else RedirectResponse(authorization_url)
     response.set_cookie(
         "oauth_state",
         state,
@@ -154,7 +160,9 @@ def github_callback(
     target_user = row.user_id
     db.delete(row)
     db.commit()
-    if target_user and get_current_user(request, db).id != target_user:
+    if settings.auth_mode == "clerk" and (not target_user or not db.get(User, target_user)):
+        raise HTTPException(400, "Start GitHub linking from your signed-in workspace")
+    if settings.auth_mode == "legacy" and target_user and get_current_user(request, db).id != target_user:
         raise HTTPException(400, "Account linking session changed")
     try:
         response = httpx.post(
@@ -214,7 +222,8 @@ def github_callback(
     db.commit()
     result = RedirectResponse(settings.web_url)
     result.delete_cookie("oauth_state", path="/api/auth/github")
-    issue_session(db, user, result)
+    if settings.auth_mode == "legacy":
+        issue_session(db, user, result)
     return result
 
 

@@ -839,6 +839,13 @@ def test_existing_alembic_schema_supports_new_discriminators_without_migration(
         context = MigrationContext.configure(conn, opts={"compare_type": True})
         migration.op = Operations(context)
         migration.upgrade()
+        # Auth adds an independent mapping; design discriminators still use the same table.
+        auth_path = Path(__file__).parents[1] / "alembic/versions/8c31d29a40bf_clerk_identity_mapping.py"
+        auth_spec = importlib.util.spec_from_file_location("clerk_mapping", auth_path)
+        auth_migration = importlib.util.module_from_spec(auth_spec)
+        auth_spec.loader.exec_module(auth_migration)
+        auth_migration.op = Operations(context)
+        auth_migration.upgrade()
         assert compare_metadata(context, Base.metadata) == []
     with Session(migrated) as db:
         user = User(email="migration@example.com", name="Migrated")

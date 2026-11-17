@@ -1,5 +1,7 @@
+import os
 import secrets
 from pathlib import Path
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +17,12 @@ class Settings(BaseSettings):
         "postgresql+psycopg://galvanise:galvanise@localhost:5433/galvanise"
     )
     auth_secret: str = ""
+    auth_mode: Literal["legacy", "clerk"] = "clerk"
+    clerk_secret_key: str = ""
+    clerk_jwt_key: str = ""
+    clerk_issuer: str = ""
+    clerk_authorized_parties: list[str] = []
+    clerk_audience: str = ""
     web_url: str = "http://localhost:3000"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.5"
@@ -39,4 +47,4 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()
+settings = Settings(_env_file=None) if os.getenv("APP_ENV") == "test" else Settings()

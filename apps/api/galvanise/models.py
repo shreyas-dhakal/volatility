@@ -33,6 +33,7 @@ class User(Identity, Base):
     email: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    clerk_user_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
 
 
 class Account(Identity, Base):
