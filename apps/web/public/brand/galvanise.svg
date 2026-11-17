@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="110 40 370 540" width="370" height="540">
+  <title>Galvanise three-circle zinc logo</title>
+  <desc>Vector adaptation of the logo at https://www.galvanise.dev/logo. Circle geometry and colours preserve the source artwork.</desc>
+  <defs>
+    <linearGradient id="large" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop stop-color="#d4d5e9"/><stop offset=".55" stop-color="#a0a1cf"/><stop offset="1" stop-color="#8081a6"/>
+    </linearGradient>
+    <linearGradient id="small" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop stop-color="#d4d4d4"/><stop offset=".55" stop-color="#9f9f9f"/><stop offset="1" stop-color="#7f7f7f"/>
+    </linearGradient>
+    <linearGradient id="bottom" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop stop-color="#aaaeb7"/><stop offset=".55" stop-color="#434a5f"/><stop offset="1" stop-color="#363b4c"/>
+    </linearGradient>
+  </defs>
+  <circle cx="275.55" cy="247.075" r="146.575" fill="url(#large)"/>
+  <circle cx="419.375" cy="99.385" r="40.425" fill="url(#small)"/>
+  <circle cx="275" cy="485.835" r="71.775" fill="url(#bottom)"/>
+</svg>
