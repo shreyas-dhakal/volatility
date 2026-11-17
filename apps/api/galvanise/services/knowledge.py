@@ -1,7 +1,8 @@
 """Pending proposals are append-only with exact-content dedup; approval belongs to human routes."""
 import json
+
+from galvanise.models import KnowledgeRecord, Message, SourceDocument, TechnicalGraph
 from sqlalchemy import select
-from galvanise.models import KnowledgeRecord, SourceDocument, Message, TechnicalGraph
 
 
 def records_for(db, project_id):

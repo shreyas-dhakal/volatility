@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from galvanise.config import settings
 from galvanise.database import Base, engine
-from galvanise.routes import auth, projects, records, sources, design
+from galvanise.routes import auth, design, projects, records, sources
 from galvanise.security import check_origin
 from galvanise.services.ingestion import run_worker
 

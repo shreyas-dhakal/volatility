@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import ClassVar
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -183,12 +184,12 @@ class IngestionJob(ProjectOwned, Base):
 
 
 class UseCase(KnowledgeRecord):
-    __mapper_args__ = {"polymorphic_identity": "use_case"}
+    __mapper_args__: ClassVar[dict] = {"polymorphic_identity": "use_case"}
 
 
 class CoreUseCase(KnowledgeRecord):
-    __mapper_args__ = {"polymorphic_identity": "core_use_case"}
+    __mapper_args__: ClassVar[dict] = {"polymorphic_identity": "core_use_case"}
 
 
 class DesignValidation(KnowledgeRecord):
-    __mapper_args__ = {"polymorphic_identity": "design_validation"}
+    __mapper_args__: ClassVar[dict] = {"polymorphic_identity": "design_validation"}

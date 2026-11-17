@@ -1,25 +1,32 @@
 """Bounded structured output contracts for the independently reviewed design stages."""
+
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=6000)]
-Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
-Ref = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+Text = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=6000)
+]
+Title = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)
+]
+Ref = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)
+]
 Texts = Annotated[list[Text], Field(max_length=100)]
 Refs = Annotated[list[Ref], Field(max_length=100)]
 Links = Annotated[list[Ref], Field(min_length=1, max_length=100)]
 
 
 class Strict(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
 
 
 class UseCaseInput(Strict):
     title: Title
-    description: str = Field(default='', max_length=6000)
-    actor: str = Field(default='', max_length=2000)
-    trigger: str = Field(default='', max_length=2000)
+    description: str = Field(default="", max_length=6000)
+    actor: str = Field(default="", max_length=2000)
+    trigger: str = Field(default="", max_length=2000)
     preconditions: Texts = Field(default_factory=list)
     steps: Annotated[list[Text], Field(min_length=1, max_length=100)]
     outcome: Text
@@ -46,7 +53,7 @@ class CoreCase(Reasoned):
 
 class Volatility(Reasoned):
     core_use_case_ids: Links
-    axis: Literal['over_time', 'across_customer', 'both']
+    axis: Literal["over_time", "across_customer", "both"]
     what_changes: Text
     why_plausible: Text
     stable_aspects: Annotated[list[Text], Field(min_length=1, max_length=100)]
@@ -54,7 +61,9 @@ class Volatility(Reasoned):
 
 
 class Component(Reasoned):
-    component_role: Literal['client', 'manager', 'engine', 'resource_access', 'resource', 'utility']
+    component_role: Literal[
+        "client", "manager", "engine", "resource_access", "resource", "utility"
+    ]
     volatility_ids: Links
     responsibility: Text
     hidden_change: Text
@@ -100,4 +109,4 @@ class ValidationResult(Strict):
 
 
 class GenerateInput(Strict):
-    stage: Literal['core', 'volatility', 'decomposition', 'validation']
+    stage: Literal["core", "volatility", "decomposition", "validation"]

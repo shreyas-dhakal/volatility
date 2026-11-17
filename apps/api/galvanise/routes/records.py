@@ -2,13 +2,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
-
 from galvanise.database import get_db
 from galvanise.dependencies import get_current_user, require_project
 from galvanise.models import KnowledgeRecord, User, now
+from pydantic import BaseModel, Field
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/projects/{project_id}/records")
 
@@ -61,17 +60,49 @@ def review(
     }
     # Keep design invariants on the existing human review path too.
     from galvanise.services.design import is_design, validate_payload
+
     if record.version != body.expected_version:
         raise HTTPException(409, "Record changed; reload before reviewing")
-    if is_design(record) and (body.payload is not None or body.title is not None or body.description is not None or body.status == "approved"):
+    if (
+        body.payload is not None
+        and not is_design(record)
+        and body.payload.get("design_engine") is True
+    ):
+        raise HTTPException(
+            422,
+            "design_engine is server-managed; generate design artifacts through the design workflow",
+        )
+    if is_design(record) and (
+        body.payload is not None
+        or body.title is not None
+        or body.description is not None
+        or body.status == "approved"
+    ):
+        if "payload" in changes:
+            changes["payload"] = {
+                k: v for k, v in changes["payload"].items() if k != "stale"
+            }
         payload = changes.get("payload", record.payload)
         if record.kind != "use_case":
             # Provenance belongs to the server, including version snapshots.
-            for field in ("input_versions", "design_engine", "context_limits", "supersedes_id", "proposal_revision"):
+            for field in (
+                "input_versions",
+                "design_engine",
+                "context_limits",
+                "supersedes_id",
+                "proposal_revision",
+            ):
                 if payload.get(field) != record.payload.get(field):
                     raise HTTPException(422, f"{field} is server-managed")
         try:
-            validate_payload(db, project_id, record.kind, changes.get("title", record.title), changes.get("description", record.description), payload)
+            validate_payload(
+                db,
+                project_id,
+                record.kind,
+                changes.get("title", record.title),
+                changes.get("description", record.description),
+                payload,
+            )
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
     result = db.execute(
