@@ -33,3 +33,19 @@ it('uses explicit review labels alongside status colors',()=>{
 it('keeps the guided process and the original Designs navigation available independently',()=>{
  const open=vi.fn();render(<><NavigationItem view="Design process" active available onClick={open}/><NavigationItem view="Designs" active={false} available onClick={open}/></>);expect(screen.getByRole('button',{name:'Design process'}).getAttribute('aria-current')).toBe('page');expect(screen.getByRole('button',{name:'Designs'})).toBeTruthy();
 });
+
+it('starts source linking with authenticated POST and reports a failure inline',async()=>{
+ const {configureTokenGetter}=await import('../lib/api');configureTokenGetter(async()=>'source-token');
+ const fetcher=vi.fn().mockResolvedValue(new Response('{"detail":"Please reconnect"}',{status:409}));vi.stubGlobal('fetch',fetcher);
+ try{render(<GitHubAction available/>);fireEvent.click(screen.getByRole('button',{name:'Connect GitHub'}));
+ expect(await screen.findByText('Please reconnect')).toBeTruthy();
+ expect(fetcher.mock.calls[0][1].method).toBe('POST');expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer source-token');
+ }finally{configureTokenGetter(undefined);vi.unstubAllGlobals()}
+});
+
+it('navigates only to GitHub after a successful authenticated source-link start',async()=>{
+ const go=vi.fn();vi.stubGlobal('location',{assign:go});vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"url":"https://github.com/login/oauth/authorize?state=synthetic"}')));
+ try{render(<GitHubAction available/>);fireEvent.click(screen.getByRole('button',{name:'Connect GitHub'}));
+ await vi.waitFor(()=>expect(go).toHaveBeenCalledWith('https://github.com/login/oauth/authorize?state=synthetic'));
+ }finally{vi.unstubAllGlobals()}
+});

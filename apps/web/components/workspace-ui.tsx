@@ -1,4 +1,6 @@
 'use client';
+import {useState} from 'react';
+import {post} from '../lib/api';
 import * as stylex from '@stylexjs/stylex';
 import {Icon, type IconProps} from '@astryxdesign/core/Icon';
 import {MessageSquare,FolderOpen,ClipboardCheck,TrendingUp,CircleHelp,Layers,Network,Settings,BookOpen,GitBranch,Check,Clock,X} from 'lucide-react';
@@ -29,9 +31,11 @@ export function ReviewState({status}:{status:string}){
  const state=status==='approved'?{label:'Approved',icon:Check,color:'success' as const}:status==='rejected'?{label:'Not used',icon:X,color:'error' as const}:{label:'Needs review',icon:Clock,color:'warning' as const};
  return <HStack gap={2} vAlign="center" xstyle={s.state} data-review-state={status}><AppIcon icon={state.icon} color={state.color}/><Text type="supporting">{state.label}</Text></HStack>;
 }
-export function GitHubAction({available,connected=false}:{available:boolean;connected?:boolean}){
+export function GitHubAction({available,connected=false,legacy=false}:{available:boolean;connected?:boolean;legacy?:boolean}){
+ const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+ async function connect(){setError('');setBusy(true);try{const {url}=await post<{url:string}>('/auth/github/start');const target=new URL(url);if(target.origin!=='https://github.com'||target.pathname!=='/login/oauth/authorize')throw new Error('GitHub returned an invalid connection address');location.assign(target.href)}catch(e){setError(e instanceof Error?e.message:'GitHub connection failed')}finally{setBusy(false)}}
  if(connected)return <HStack gap={2} vAlign="center"><AppIcon icon={Check} color="success"/><Text>GitHub connected</Text></HStack>;
- return <VStack gap={2}><Button label={available?'Connect GitHub':'GitHub not set up'} icon={<AppIcon icon={GitBranch} color={available?'blue':'disabled'}/>} href={available?'/api/auth/github/start':undefined} isDisabled={!available}/>{!available&&<Text type="supporting" color="secondary">You can upload files now. GitHub can be set up later in Settings.</Text>}</VStack>;
+ return <VStack gap={2}><Button label={available?'Connect GitHub':'GitHub not set up'} icon={<AppIcon icon={GitBranch} color={available?'blue':'disabled'}/>} href={available&&legacy?'/api/auth/github/start':undefined} onClick={legacy?undefined:()=>void connect()} isLoading={busy} isDisabled={!available}/>{error&&<Text role="alert">{error}</Text>}{!available&&<Text type="supporting" color="secondary">You can upload files now. GitHub can be set up later in Settings.</Text>}</VStack>;
 }
 export function evidenceLabel(value:string){return ({verified:'Checked against a source',human_confirmed:'Confirmed by a person',ai_inferred:'AI suggestion',hypothesis:'Source not confirmed'} as Record<string,string>)[value]||value.replaceAll('_',' ')}
 export function fieldLabel(value:string){return ({change_driver:'Reason for change',change_drivers:'Reasons for change',affected_decisions:'Decisions that may change',stable_decisions:'What stays the same',stable_contract:'What stays the same',included_responsibilities:'Included',excluded_responsibilities:'Not included',responsibility:'Purpose',boundary_type:'Type of part',node_ids:'Code parts',evidence_ids:'Sources',evidence_status:'How we know',dependencies:'Connections',tradeoffs:'Things to consider',migration:'How to get there',open_questions:'Questions to answer',time_horizon:'When this might change',volatility_type:'Type of change',recommended_investigation:'What to check next',stakeholder_role:'Who to ask',potentially_affected_nodes:'Parts that may need changes',cross_boundary_dependencies:'Connections between parts',dependency_edges_in_envelope:'Connections to check',regression_scope:'Tests to check',changed_interfaces:'Connections that may change',boundaries:'Proposed parts',assessment:'Summary',approach:'Approach',conservative:'Keep most of the current system','volatility-aware':'Separate the parts likely to change',uncertainty:'What we still need to know',assumptions:'Things to confirm',rationale:'Why this helps'} as Record<string,string>)[value]||value.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase())}

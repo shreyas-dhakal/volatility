@@ -16,3 +16,30 @@ describe('validation feedback',()=>{
  it('names invalid inputs instead of hiding validation details',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"detail":[{"loc":["body","password"],"msg":"At least 10 characters"}]}',{status:422})));await expect(request('/auth/register')).rejects.toThrow('password: At least 10 characters')});
  it('gives actionable offline errors for chat too',async()=>{vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new TypeError('network')));await expect(chat('/chat','hello',()=>{})).rejects.toThrow('Check that the API is running')});
 });
+
+describe('Clerk bearer transport',()=>{
+ it('gets a token per JSON and multipart request without changing the multipart boundary',async()=>{
+  const {configureTokenGetter}=await import('./api');let generation=0;configureTokenGetter(async()=>`token-${++generation}`);
+  const fetcher=vi.fn().mockImplementation(async()=>new Response('{}'));vi.stubGlobal('fetch',fetcher);
+  try {await request('/projects');await request('/documents',{method:'POST',body:new FormData()});
+   expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer token-1');
+   expect(fetcher.mock.calls[1][1].headers).toEqual({Authorization:'Bearer token-2'});
+  } finally {configureTokenGetter(undefined)}
+ });
+ it('authenticates streamed chat with the same bearer contract',async()=>{
+  const {configureTokenGetter}=await import('./api');configureTokenGetter(async()=>'stream-token');
+  const fetcher=vi.fn().mockResolvedValue(new Response('event: done\ndata: {}\n\n'));vi.stubGlobal('fetch',fetcher);
+  try {await chat('/chat','hi',()=>{});expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer stream-token')}finally{configureTokenGetter(undefined)}
+ });
+ it('rejects missing Clerk sessions before sending any request',async()=>{
+  const {configureTokenGetter}=await import('./api');configureTokenGetter(async()=>null);const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+  try {await expect(request('/projects')).rejects.toMatchObject({status:401});await expect(chat('/chat','hi',()=>{})).rejects.toMatchObject({status:401});expect(fetcher).not.toHaveBeenCalled()}finally{configureTokenGetter(undefined)}
+ });
+});
+
+it('does not send an old request after the account token provider changes',async()=>{
+ const {configureTokenGetter}=await import('./api');let release!:(token:string)=>void;
+ configureTokenGetter(()=>new Promise(resolve=>{release=resolve}));const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+ const pending=request('/projects');configureTokenGetter(async()=>'new-session');release('old-session');
+ try{await expect(pending).rejects.toMatchObject({status:401});expect(fetcher).not.toHaveBeenCalled()}finally{configureTokenGetter(undefined)}
+});
