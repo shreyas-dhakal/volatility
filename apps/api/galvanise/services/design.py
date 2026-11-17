@@ -1,0 +1,287 @@
+"""Typed design invariants, deterministic diagnostics and versioned stage inputs.
+
+AI output is a proposal. Diagnostics describe structural checks, never execution
+or an architecture score. Historical records and human approvals are immutable
+through generation; PATCH remains the only review path.
+"""
+import json
+
+import networkx as nx
+from fastapi import HTTPException
+
+from galvanise.agents.design_schemas import (
+    Component, CoreCase, CoreResult, DecompositionResult, UseCaseInput,
+    Validation, ValidationResult, Volatility, VolatilityResult,
+)
+from galvanise.models import KnowledgeRecord, uid
+from galvanise.services.knowledge import (
+    bounded_context, evidence_ids, records_for, save_proposals, serialize,
+)
+
+KINDS = ('use_case', 'core_use_case', 'volatility', 'boundary', 'design_validation')
+STAGES = {'core': 'core_use_case', 'volatility': 'volatility', 'decomposition': 'boundary', 'validation': 'design_validation'}
+SCHEMAS = {'core_use_case': CoreCase, 'volatility': Volatility, 'boundary': Component, 'design_validation': Validation}
+RESULTS = {'core': CoreResult, 'volatility': VolatilityResult, 'decomposition': DecompositionResult, 'validation': ValidationResult}
+PRIOR = {'core': ('use_case',), 'volatility': ('use_case', 'core_use_case'), 'decomposition': ('use_case', 'core_use_case', 'volatility'), 'validation': ('use_case', 'core_use_case', 'volatility', 'boundary')}
+META = {'design_engine', 'input_versions', 'context_limits', 'supersedes_id', 'proposal_revision', 'stale'}
+PROMPTS = {
+    'core': 'Discover business essence from original use cases, not similar wording. Preserve original variations by explicit use_case_ids. Explain mappings and rationale; list unresolved original IDs and uncertainty rather than silently omitting cases.',
+    'volatility': 'Independently analyze plausible reasons for change over time or across customers. A variation, entity, git churn, or optional feature is not automatically architectural volatility. Identify what changes, why plausible, stable aspects and concrete examples. Ground each hypothesis in reviewed core_use_case_ids and supplied evidence. Preserve uncertainty and focused questions.',
+    'decomposition': 'Decompose by encapsulating independent volatilities, not one service per use case or entity. Classify client, manager (workflow sequence), engine (business activity), resource_access, resource or utility. State responsibility, hidden change, stable contract and exclusions. Separate orchestration from business activity. Dependencies are existing component IDs or exact same-batch titles. Deployment is a separate decision; prefer modules/interfaces.',
+    'validation': 'Propose qualitative use-case collaborations and change-containment scenarios using reviewed components, known volatilities and core cases. List ordered steps, changed and unchanged components, rationale and assumptions. Distinguish hypotheses from evidence. Do not claim execution verification, measured savings, confidence scores or architecture scores.',
+}
+
+
+def is_design(record):
+    return record.kind in ('use_case', 'core_use_case', 'design_validation') or (record.kind in ('volatility', 'boundary') and record.payload.get('design_engine') is True)
+
+
+def design_records(db, project_id):
+    return [r for r in records_for(db, project_id) if is_design(r)]
+
+
+def versions(records, stage):
+    # Include rejected and pending history too: edits, rejections and new proposals
+    # must not let an old report masquerade as validation of current inputs.
+    return {r.id: r.version for r in records if r.kind in PRIOR[stage]}
+
+
+def stale(record, records):
+    stage = next((s for s, kind in STAGES.items() if kind == record.kind), None)
+    return bool(stage and record.payload.get('input_versions') != versions(records, stage))
+
+
+def _refs(values, kind, by_id, field):
+    for value in values:
+        record = by_id.get(value)
+        if record is None or record.kind != kind or record.status == 'rejected':
+            raise ValueError(f'{field}: unknown, rejected, wrong-kind or cross-project {kind} reference: {value}')
+
+
+def validate_payload(db, project_id, kind, title, description, payload, *, batch=None, references=None, allowed_evidence=None):
+    """Validate a complete design payload before any database write."""
+    by_id = dict(references) if references is not None else {r.id: r for r in design_records(db, project_id)}
+    by_id.update(batch or {})
+    clean = {k: v for k, v in payload.items() if k not in META}
+    data = {'title': title, 'description': description, **clean}
+    model = UseCaseInput if kind == 'use_case' else SCHEMAS[kind]
+    parsed = model.model_validate(data).model_dump()
+    if not set(parsed['evidence_ids']) <= (allowed_evidence if allowed_evidence is not None else evidence_ids(db, project_id)):
+        raise ValueError('Unknown or cross-project evidence id')
+    if kind == 'core_use_case':
+        _refs(parsed['use_case_ids'], 'use_case', by_id, 'use_case_ids')
+        _refs(parsed['unresolved_use_case_ids'], 'use_case', by_id, 'unresolved_use_case_ids')
+    elif kind == 'volatility':
+        _refs(parsed['core_use_case_ids'], 'core_use_case', by_id, 'core_use_case_ids')
+    elif kind == 'boundary':
+        _refs(parsed['volatility_ids'], 'volatility', by_id, 'volatility_ids')
+        _refs(parsed['dependencies'], 'boundary', by_id, 'dependencies')
+    elif kind == 'design_validation':
+        for collaboration in parsed['collaborations']:
+            _refs([collaboration['core_use_case_id']], 'core_use_case', by_id, 'core_use_case_id')
+            _refs(collaboration['component_ids'], 'boundary', by_id, 'component_ids')
+        for scenario in parsed['scenarios']:
+            _refs([scenario['volatility_id']], 'volatility', by_id, 'volatility_id')
+            _refs(scenario['changed_component_ids'] + scenario['unchanged_component_ids'], 'boundary', by_id, 'scenario components')
+            if set(scenario['changed_component_ids']) & set(scenario['unchanged_component_ids']):
+                raise ValueError('Scenario changed and unchanged components must be disjoint')
+    return parsed
+
+
+def intake(db, project_id, body):
+    data = body.model_dump()
+    title, description = data.pop('title'), data.pop('description')
+    validate_payload(db, project_id, 'use_case', title, description, data)
+    record = KnowledgeRecord(project_id=project_id, kind='use_case', title=title, description=description, payload=data, status='pending', evidence_status='human_confirmed')
+    db.add(record)
+    db.commit()
+    return record
+
+
+def usable(record, records, by_id, valid_ids=None):
+    """Reviewed, fresh inputs whose typed upstream links remain approved."""
+    if (valid_ids is not None and record.id not in valid_ids) or record.status != 'approved' or (record.kind != 'use_case' and stale(record, records)):
+        return False
+    fields = {'core_use_case': ('use_case_ids',), 'volatility': ('core_use_case_ids',), 'boundary': ('volatility_ids',)}.get(record.kind, ())
+    # Core discovery explicitly accepts unreviewed original cases; later stages
+    # consume reviewed cores. Rejected original cases always invalidate them.
+    for field in fields:
+        for rid in record.payload.get(field, []):
+            target = by_id.get(rid)
+            if target is None or target.status == 'rejected':
+                return False
+            if record.kind != 'core_use_case' and not usable(target, records, by_id, valid_ids):
+                return False
+        if not record.payload.get(field):
+            return False
+    return True
+
+
+def valid_record_ids(db, project_id, records):
+    by_id = {r.id: r for r in records}
+    allowed = evidence_ids(db, project_id)
+    valid = set()
+    for record in records:
+        try:
+            validate_payload(db, project_id, record.kind, record.title, record.description, record.payload, references=by_id, allowed_evidence=allowed)
+            valid.add(record.id)
+        except ValueError:
+            pass
+    return valid
+
+
+def prerequisites(db, project_id, stage):
+    records = design_records(db, project_id)
+    by_id = {r.id: r for r in records}
+    valid_ids = valid_record_ids(db, project_id, records)
+    required = {'core': ('use_case',), 'volatility': ('core_use_case',), 'decomposition': ('core_use_case', 'volatility'), 'validation': ('core_use_case', 'volatility', 'boundary')}[stage]
+    missing = [kind for kind in required if not any(r.kind == kind and (r.status != 'rejected' and r.id in valid_ids if stage == 'core' else usable(r, records, by_id, valid_ids)) for r in records)]
+    if missing:
+        raise HTTPException(422, 'Stage requires ' + ', '.join(missing) + ('; add original use cases first.' if stage == 'core' else '; approve current inputs and regenerate stale stages first.'))
+    return records
+
+
+def context_for(db, project_id, records, stage):
+    context = bounded_context(db, project_id)
+    # Keep complete typed inputs where possible, explicitly mark per-record excerpts.
+    entries = []
+    for r in records:
+        if r.kind in PRIOR[stage] and r.status != 'rejected':
+            value = serialize(r)
+            value.pop('history', None)
+            value.pop('created_at', None)
+            value.pop('updated_at', None)
+            encoded = json.dumps(value['payload'], default=str)
+            if len(encoded) > 10000:
+                value['payload'] = {'bounded_excerpt': encoded[:10000], 'truncated': True}
+            entries.append(value)
+    entries.sort(key=lambda r: (r['status'] != 'approved', r['kind'], r['id']))
+    selected = entries[:100]
+    context['design_inputs'] = selected
+    context['stage'] = stage
+    # Prioritize the typed inputs over generic duplicated knowledge.
+    for key in ('knowledge', 'stakeholder_answers', 'documents', 'messages'):
+        while len(json.dumps(context, default=str)) > 90000 and context[key]:
+            context[key].pop()
+    while len(json.dumps(context, default=str)) > 90000 and selected:
+        selected.pop()
+    context['context_limits']['design_records_omitted'] = len(entries) - len(selected)
+    context['context_limits']['design_payloads_truncated'] = sum(r['payload'].get('truncated') is True for r in selected)
+    return context
+
+
+def save_generated(db, project_id, stage, result, inputs, context_limits):
+    # Revalidate even mocked/SDK output. No part of a bad batch is persisted.
+    result = RESULTS[stage].model_validate(result.model_dump() if hasattr(result, 'model_dump') else result)
+    values = [r.model_dump() for r in result.records]
+    kind = STAGES[stage]
+    snapshot = versions(inputs, stage)
+    existing = design_records(db, project_id)
+    ids = [uid() for _ in values]
+    batch = {}
+    if stage == 'decomposition':
+        titles = [v['title'].casefold() for v in values]
+        if len(titles) != len(set(titles)):
+            raise ValueError('Component titles must be unique within a batch')
+        # Compare in title space to make exact reruns (including cycles) idempotent.
+        name_by_id = {r.id: r.title for r in existing if r.kind == 'boundary'}
+        def comparable(payload):
+            p = {k: v for k, v in payload.items() if k not in ('supersedes_id', 'proposal_revision')}
+            p['dependencies'] = [name_by_id.get(d, d) for d in p.get('dependencies', [])]
+            return p
+        for i, value in enumerate(values):
+            payload = {k: v for k, v in value.items() if k not in ('title', 'description')}
+            payload.update(design_engine=True, input_versions=snapshot, context_limits=context_limits)
+            duplicate = next((r for r in reversed(existing) if r.kind == kind and r.status != 'rejected' and r.title == value['title'] and r.description == value['description'] and comparable(r.payload) == comparable(payload)), None)
+            if duplicate:
+                ids[i] = duplicate.id
+        names = {v['title']: ids[i] for i, v in enumerate(values)}
+        for i, value in enumerate(values):
+            value['dependencies'] = [names.get(d, d) for d in value['dependencies']]
+            batch[ids[i]] = KnowledgeRecord(id=ids[i], project_id=project_id, kind='boundary', title=value['title'], status='pending')
+    proposals = []
+    references = {r.id: r for r in existing}
+    allowed_evidence = evidence_ids(db, project_id)
+    for value in values:
+        payload = {k: v for k, v in value.items() if k not in ('title', 'description')}
+        validate_payload(db, project_id, kind, value['title'], value['description'], payload, batch=batch, references=references, allowed_evidence=allowed_evidence)
+        proposals.append({'kind': kind, **value, 'design_engine': True, 'input_versions': snapshot, 'context_limits': context_limits})
+    # Guard against edits/new inputs while the provider was running.
+    db.expire_all()
+    if versions(design_records(db, project_id), stage) != snapshot:
+        raise HTTPException(409, 'Design inputs changed during generation; reload and retry.')
+    return save_proposals(db, project_id, proposals, record_ids=ids)
+
+
+def view(db, project_id):
+    records = design_records(db, project_id)
+    by_id = {r.id: r for r in records}
+    groups = {kind: [r for r in records if r.kind == kind] for kind in KINDS}
+    active = {kind: [r for r in rows if r.status != 'rejected'] for kind, rows in groups.items()}
+    findings = []
+    valid_ids = set()
+    allowed_evidence = evidence_ids(db, project_id)
+    def finding(code, message, ids, severity='warning'):
+        findings.append({'code': code, 'severity': severity, 'message': message, 'record_ids': sorted(set(ids))})
+    for r in records:
+        if r.status == 'rejected':
+            continue
+        try:
+            validate_payload(db, project_id, r.kind, r.title, r.description, r.payload, references=by_id, allowed_evidence=allowed_evidence)
+            valid_ids.add(r.id)
+        except ValueError as error:
+            finding('invalid_reference_or_payload', f'{r.title}: {error}', [r.id], 'error')
+        if r.kind != 'use_case' and stale(r, records):
+            finding('stale_validation' if r.kind == 'design_validation' else 'stale_artifact', f'{r.title} predates changed design inputs; regenerate and review.', [r.id])
+        if any(v for v in r.payload.get('context_limits', {}).values() if isinstance(v, int)):
+            finding('context_truncated', f'{r.title} was proposed with bounded context; review omitted inputs.', [r.id])
+    mapped = {rid for r in active['core_use_case'] for rid in r.payload.get('use_case_ids', [])}
+    for r in active['use_case']:
+        if r.id not in mapped:
+            finding('uncovered_use_case', f'{r.title} has no core mapping; retain and resolve its variations.', [r.id])
+    for r in active['core_use_case']:
+        for rid in r.payload.get('unresolved_use_case_ids', []):
+            finding('unresolved_use_case', f'{r.title} leaves an original case unresolved.', [r.id, rid])
+    encapsulated = {rid for r in active['boundary'] for rid in r.payload.get('volatility_ids', [])}
+    for r in active['volatility']:
+        if r.id not in encapsulated:
+            finding('unmapped_volatility', f'{r.title} has no encapsulating component.', [r.id])
+    graph = nx.DiGraph()
+    component_ids = {r.id for r in active['boundary']}
+    graph.add_nodes_from(sorted(component_ids))
+    for r in active['boundary']:
+        if not str(r.payload.get('stable_contract', '')).strip():
+            finding('missing_contract', f'{r.title} needs a stable contract.', [r.id], 'error')
+        for dep in r.payload.get('dependencies', []):
+            if dep not in component_ids:
+                finding('unknown_dependency', f'{r.title} depends on an unavailable component.', [r.id, dep], 'error')
+            else:
+                graph.add_edge(r.id, dep)
+    # Strongly connected sets are linear-time and cannot explode like all cycles.
+    for members in nx.strongly_connected_components(graph):
+        if len(members) > 1 or any(graph.has_edge(rid, rid) for rid in members):
+            finding('dependency_cycle', 'Component dependencies form a cycle; review responsibility direction.', list(members), 'error')
+    fresh_validations = [r for r in active['design_validation'] if not stale(r, records)]
+    covered = {c['core_use_case_id'] for r in fresh_validations for c in r.payload.get('collaborations', [])}
+    tested = {s['volatility_id'] for r in fresh_validations for s in r.payload.get('scenarios', [])}
+    for r in active['core_use_case']:
+        if r.id not in covered:
+            finding('missing_collaboration', f'{r.title} has no current collaboration proposal.', [r.id])
+    for r in active['volatility']:
+        if r.id not in tested:
+            finding('missing_change_scenario', f'{r.title} has no current containment scenario.', [r.id])
+    for r in fresh_validations:
+        for scenario in r.payload.get('scenarios', []):
+            owners = {b.id for b in active['boundary'] if scenario['volatility_id'] in b.payload.get('volatility_ids', [])}
+            changed = set(scenario['changed_component_ids'])
+            if not owners or not owners & changed or changed - owners:
+                finding('change_not_contained', f"{scenario['title']}: proposed changes do not stay within the encapsulating components.", [r.id, scenario['volatility_id'], *changed])
+    readiness = {name: any(usable(r, records, by_id, valid_ids) for r in groups[kind]) for name, kind in [('use_cases', 'use_case'), ('core_use_cases', 'core_use_case'), ('volatility', 'volatility'), ('decomposition', 'boundary'), ('validation', 'design_validation')]}
+    # A fresh report still needs reviewed current prerequisite inputs.
+    readiness['validation'] &= all(readiness[name] for name in ('core_use_cases', 'volatility', 'decomposition'))
+    def output(r):
+        value = serialize(r)
+        if r.kind != 'use_case':
+            value['payload'] = {**r.payload, 'stale': stale(r, records)}
+        return value
+    return {**{name: [output(r) for r in groups[kind]] for name, kind in [('use_cases', 'use_case'), ('core_use_cases', 'core_use_case'), ('volatilities', 'volatility'), ('components', 'boundary'), ('validations', 'design_validation')]}, 'findings': sorted(findings, key=lambda f: (f['code'], f['record_ids'])), 'readiness': readiness}

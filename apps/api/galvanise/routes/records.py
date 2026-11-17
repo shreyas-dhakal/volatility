@@ -59,6 +59,21 @@ def review(
         for k, v in body.model_dump(exclude_unset=True).items()
         if k != "expected_version" and v is not None
     }
+    # Keep design invariants on the existing human review path too.
+    from galvanise.services.design import is_design, validate_payload
+    if record.version != body.expected_version:
+        raise HTTPException(409, "Record changed; reload before reviewing")
+    if is_design(record) and (body.payload is not None or body.title is not None or body.description is not None or body.status == "approved"):
+        payload = changes.get("payload", record.payload)
+        if record.kind != "use_case":
+            # Provenance belongs to the server, including version snapshots.
+            for field in ("input_versions", "design_engine", "context_limits", "supersedes_id", "proposal_revision"):
+                if payload.get(field) != record.payload.get(field):
+                    raise HTTPException(422, f"{field} is server-managed")
+        try:
+            validate_payload(db, project_id, record.kind, changes.get("title", record.title), changes.get("description", record.description), payload)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
     result = db.execute(
         update(KnowledgeRecord)
         .where(

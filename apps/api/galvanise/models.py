@@ -180,3 +180,15 @@ class IngestionJob(ProjectOwned, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now, onupdate=now
     )
+
+
+class UseCase(KnowledgeRecord):
+    __mapper_args__ = {"polymorphic_identity": "use_case"}
+
+
+class CoreUseCase(KnowledgeRecord):
+    __mapper_args__ = {"polymorphic_identity": "core_use_case"}
+
+
+class DesignValidation(KnowledgeRecord):
+    __mapper_args__ = {"polymorphic_identity": "design_validation"}
