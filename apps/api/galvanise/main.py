@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from galvanise.config import settings
 from galvanise.database import Base, engine
-from galvanise.routes import auth, projects, records, sources
+from galvanise.routes import auth, design, projects, records, sources
 from galvanise.security import check_origin
 from galvanise.services.ingestion import run_worker
 
@@ -56,5 +56,5 @@ if importlib.util.find_spec("galvanise.routes.intelligence") is not None:
     from galvanise.routes.intelligence import router
 
     app.include_router(router, prefix="/api")
-for router in (auth.router, projects.router, sources.router, records.router):
+for router in (auth.router, projects.router, sources.router, records.router, design.router):
     app.include_router(router)

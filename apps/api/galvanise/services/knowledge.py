@@ -1,7 +1,8 @@
 """Pending proposals are append-only with exact-content dedup; approval belongs to human routes."""
 import json
+
+from galvanise.models import KnowledgeRecord, Message, SourceDocument, TechnicalGraph
 from sqlalchemy import select
-from galvanise.models import KnowledgeRecord, SourceDocument, Message, TechnicalGraph
 
 
 def records_for(db, project_id):
@@ -29,7 +30,7 @@ def validate_references(payload, allowed_evidence, allowed_nodes):
         for item in payload: validate_references(item,allowed_evidence,allowed_nodes)
 
 
-def save_proposals(db, project_id, proposals):
+def save_proposals(db, project_id, proposals, *, record_ids=None):
     allowed_evidence, allowed_nodes = evidence_ids(db,project_id), node_ids(db,project_id)
     existing = records_for(db,project_id)
     prepared = []
@@ -39,7 +40,7 @@ def save_proposals(db, project_id, proposals):
         # Validate all proposals before adding any; never mutate existing approved records.
         prepared.append(value)
     result=[]
-    for value in prepared:
+    for index, value in enumerate(prepared):
         kind,title = value.pop('kind'),value.pop('title')
         description=value.pop('description','')
         # Lineage is generated here and excluded from substantive content comparison.
@@ -56,6 +57,8 @@ def save_proposals(db, project_id, proposals):
             value={**value,'supersedes_id':previous.id,'proposal_revision':previous.payload.get('proposal_revision',1)+1}
             history=[{'source_record_id':previous.id,'source_version':previous.version,'title':previous.title,'description':previous.description,'status':previous.status,'evidence_status':previous.evidence_status,'payload':previous.payload}]
         record=KnowledgeRecord(project_id=project_id,kind=kind,title=title,description=description,status='pending',evidence_status='ai_inferred' if value.get('evidence_ids') else 'hypothesis',payload=value,history=history)
+        if record_ids is not None:
+            record.id = record_ids[index]
         db.add(record); db.flush(); existing.append(record); result.append(record)
     db.commit()
     return result
