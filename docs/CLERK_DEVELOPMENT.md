@@ -98,3 +98,27 @@ Do not apply a blind database snapshot rollback after users have created work or
 changed credentials. Keep the write freeze until the rehearsal passes; otherwise
 reconcile Clerk-only users and changed credentials or forward-fix. Retain the
 additive mapping and source encryption material through the rollback window.
+
+## Frontend setup and guards
+
+The installed frontend SDK is Core 3 (`@clerk/nextjs` 7), with `proxy.ts`, an
+async server protection boundary, provider inside body, and Suspense around
+prebuilt auth forms. Sign-in and sign-up live at `/sign-in` and `/sign-up`.
+The sidebar retains the Settings gear beside the local account name and includes
+Clerk's account control. Account Settings and sign-out also work before the first
+project exists. Account switches unmount all previous workspace state/streams.
+
+Next.js also reads `AUTH_MODE` (default Clerk). In Clerk mode both
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` must be provisioned in
+the host before building/running. Missing keys show a setup-needed page without
+invoking Clerk's accountless development flow. Rebuild after adding/changing
+public configuration. Auth loading never triggers protected API calls.
+
+Because the SDK integration was wired independently while host login was pending,
+do not run `init` over it. After the user logs in from their own host terminal,
+link only the selected existing app if needed and pull its development keys using
+Clerk's supported CLI; do not read/print generated environment or claim files.
+Run `npx -y clerk@latest doctor` from `apps/web`, then start on an isolated worker
+port. Configure FastAPI's matching issuer/authorized parties and server key in the
+host too. A successful keyless-disabled build with missing keys is only a build
+check, not evidence of working Clerk sign-in.

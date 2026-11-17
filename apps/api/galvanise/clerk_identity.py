@@ -91,4 +91,27 @@ def resolve_user(db, subject, identity_provider=None):
             raise HTTPException(
                 503, "Account synchronization pending; retry shortly"
             ) from None
+    email = primary_email(remote)
+    if email and email.verification and email.verification.status == "verified":
+        address = email.email_address.strip().lower()
+        if address != user.email:
+            if db.scalar(
+                select(User.id).where(User.email == address, User.id != user.id)
+            ):
+                raise HTTPException(
+                    409,
+                    "Profile email conflicts with another account; request recovery",
+                )
+            user.email = address
+    name = " ".join(filter(None, [remote.first_name, remote.last_name])).strip()
+    if name:
+        user.name = name
+    if db.is_modified(user):
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                409, "Profile email conflicts with another account; request recovery"
+            ) from None
     return user

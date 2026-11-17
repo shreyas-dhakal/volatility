@@ -10,7 +10,7 @@
 
 **Spec:** Dispatched task `task_a4315c15bc3a`, selected application `app_3MEbdIf6xt3sJt7mulZI7WMSb6y`, and the user-approved setup checklist subject to the separate migration-plan approval gate.
 
-**Status:** Proposed, awaiting approval. Source inspection and official documentation review only. No Clerk init, CLI account access, user import, database access, environment/claim-file reads, SDK installation, application mutation, or existing-auth modification has occurred.
+**Status:** Approved for development integration and isolated synthetic tests via coordinator message `msg_4a3ead66bf74`; production and real-user imports remain separately gated. The original inspection-only phase is complete. Implementation is underway; host CLI login and live instance validation are pending. No environment/claim files have been read, and no real-user imports or production cutover have run.
 
 ## Constraints and approval decision
 

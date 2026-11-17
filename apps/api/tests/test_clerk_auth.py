@@ -87,6 +87,18 @@ def client(monkeypatch):
                 external_id={"user_owner": "owner", "user_other": "other"}[subject],
                 banned=False,
                 locked=False,
+                first_name="Owner" if subject == "user_owner" else "Other",
+                last_name=None,
+                primary_email_address_id="email_test",
+                email_addresses=[
+                    NS(
+                        id="email_test",
+                        email_address="owner@example.com"
+                        if subject == "user_owner"
+                        else "other@example.com",
+                        verification=NS(status="verified"),
+                    )
+                ],
             )
 
     monkeypatch.setattr(clerk_identity, "provider", lambda: Provider())
@@ -229,3 +241,67 @@ def test_source_callback_links_without_issuing_session_or_changing_owner(
         ).status_code
         == 400
     )
+
+
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        ("/api/projects", {"name": "Unauthorized"}),
+        (
+            "/api/projects/private/conversations/missing/chat",
+            {"content": "Unauthorized"},
+        ),
+        ("/api/projects/private/analyse", {}),
+        ("/api/projects/private/design/generate", {"stage": "core"}),
+        ("/api/projects/private/design/use-cases", {"title": "Unauthorized"}),
+    ],
+)
+def test_direct_mutation_routes_require_clerk_before_processing(client, path, body):
+    assert client.post(path, json=body).status_code == 401
+
+
+def test_upload_requires_clerk_before_persisting_source(client):
+    response = client.post(
+        "/api/projects/private/documents",
+        files={"file": ("synthetic.txt", b"synthetic", "text/plain")},
+    )
+    assert response.status_code == 401
+
+
+def test_source_link_cannot_steal_another_owners_github_account(client, monkeypatch):
+    from galvanise.routes import auth as routes
+
+    monkeypatch.setattr(settings, "github_client_id", "synthetic-client")
+    monkeypatch.setattr(settings, "github_client_secret", "synthetic-secret")
+    with SessionLocal() as db:
+        db.add(
+            Account(
+                user_id="other",
+                github_id="123",
+                token_ciphertext=encrypt("original-synthetic"),
+            )
+        )
+        db.commit()
+    auth(client)
+    start = client.post("/api/auth/github/start")
+    state = parse_qs(urlparse(start.json()["url"]).query)["state"][0]
+    monkeypatch.setattr(
+        routes.httpx,
+        "post",
+        lambda *a, **kw: NS(
+            raise_for_status=lambda: None, json=lambda: {"access_token": "synthetic"}
+        ),
+    )
+    monkeypatch.setattr(
+        routes,
+        "api",
+        lambda t, path: {"id": 123, "login": "test"} if path == "/user" else [],
+    )
+    response = client.get(
+        "/api/auth/github/callback",
+        params={"state": state, "code": "synthetic"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 409
+    with SessionLocal() as db:
+        assert db.scalar(select(Account)).user_id == "other"

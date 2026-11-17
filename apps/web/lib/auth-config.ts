@@ -1,0 +1,3 @@
+// Server configuration checks only. Never fall back to SDK accountless setup.
+export function legacyAuth(){return process.env.AUTH_MODE==='legacy'}
+export function clerkConfigured(){return Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY&&process.env.CLERK_SECRET_KEY)}

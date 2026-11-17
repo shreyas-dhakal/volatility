@@ -373,3 +373,88 @@ def test_cutover_dry_run_preserves_sessions_and_apply_keeps_source_credentials()
         assert (
             decrypt(db.scalar(select(Account)).token_ciphertext) == "synthetic-source"
         )
+
+
+def test_concurrent_first_requests_create_one_owner(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    isolated = create_engine(
+        f"sqlite:///{tmp_path / 'concurrent.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(isolated)
+    barrier = Barrier(2)
+
+    class ConcurrentSession(Session):
+        def commit(self):
+            if not self.info.get("first_commit"):
+                self.info["first_commit"] = True
+                barrier.wait(timeout=10)
+            super().commit()
+
+    provider = Provider()
+    provider.rows["user_new"] = remote()
+
+    def open_workspace():
+        with ConcurrentSession(isolated) as db:
+            return clerk_identity.resolve_user(db, "user_new", provider).id
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(open_workspace)
+            second = pool.submit(open_workspace)
+            owners = [first.result(timeout=15), second.result(timeout=15)]
+        assert owners[0] == owners[1]
+        with Session(isolated) as db:
+            assert len(db.scalars(select(User)).all()) == 1
+        assert provider.get("user_new").external_id == owners[0]
+    finally:
+        isolated.dispose()
+
+
+def test_verified_profile_changes_sync_without_changing_owner_uuid():
+    provider = Provider()
+    provider.rows["user_old"] = remote("user_old", "updated@example.com", "legacy")
+    provider.rows["user_old"].first_name = "Updated"
+    with SessionLocal() as db:
+        db.add(
+            User(
+                id="legacy",
+                clerk_user_id="user_old",
+                name="Original",
+                email="original@example.com",
+            )
+        )
+        db.commit()
+        user = clerk_identity.resolve_user(db, "user_old", provider)
+        assert (
+            user.id == "legacy"
+            and user.email == "updated@example.com"
+            and user.name == "Updated"
+        )
+
+
+def test_profile_email_conflict_preserves_both_owners_and_mapping():
+    provider = Provider()
+    provider.rows["user_old"] = remote("user_old", "other@example.com", "legacy")
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                User(
+                    id="legacy",
+                    clerk_user_id="user_old",
+                    name="Original",
+                    email="original@example.com",
+                ),
+                User(id="other", name="Other", email="other@example.com"),
+            ]
+        )
+        db.commit()
+        with pytest.raises(HTTPException) as e:
+            clerk_identity.resolve_user(db, "user_old", provider)
+        assert e.value.status_code == 409
+        assert db.get(User, "legacy").email == "original@example.com"
+        assert db.get(User, "legacy").clerk_user_id == "user_old"
