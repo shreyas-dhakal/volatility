@@ -59,7 +59,8 @@ def review(
         if k != "expected_version" and v is not None
     }
     # Keep design invariants on the existing human review path too.
-    from galvanise.services.design import is_design, validate_payload
+    from galvanise.services.design import evidence_versions, is_design, validate_payload
+    from galvanise.services.knowledge import records_for
 
     if record.version != body.expected_version:
         raise HTTPException(409, "Record changed; reload before reviewing")
@@ -83,6 +84,10 @@ def review(
                 k: v for k, v in changes["payload"].items() if k != "stale"
             }
         payload = changes.get("payload", record.payload)
+        if "evidence_versions" in payload and payload[
+            "evidence_versions"
+        ] != record.payload.get("evidence_versions", {}):
+            raise HTTPException(422, "evidence_versions is server-managed")
         if record.kind != "use_case":
             # Provenance belongs to the server, including version snapshots.
             for field in (
@@ -105,6 +110,10 @@ def review(
             )
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
+        if "payload" in changes:
+            changes["payload"]["evidence_versions"] = evidence_versions(
+                payload, records_for(db, project_id)
+            )
     result = db.execute(
         update(KnowledgeRecord)
         .where(

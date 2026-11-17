@@ -57,6 +57,7 @@ PRIOR = {
 META = {
     "design_engine",
     "input_versions",
+    "evidence_versions",
     "context_limits",
     "supersedes_id",
     "proposal_revision",
@@ -84,52 +85,118 @@ def design_records(db, project_id):
 def versions(records, stage):
     # Include rejected and pending history too: edits, rejections and new proposals
     # must not let an old report masquerade as validation of current inputs.
-    return {r.id: r.version for r in records if r.kind in PRIOR[stage]}
+    return {r.id: r.version for r in records if is_design(r) and r.kind in PRIOR[stage]}
 
 
-def stale(record, records):
-    stage = next((s for s, kind in STAGES.items() if kind == record.kind), None)
-    if not stage:
-        return False
-    if record.payload.get("input_versions") != versions(records, stage):
-        return True
-    # Human edits can link an older approved proposal whose own assumptions are
-    # already stale. Its approval does not make those assumptions current.
-    linked = []
+def evidence_references(payload, records):
+    """Follow evidence links once each, retaining unknown IDs for validation."""
+    by_id = {r.id: r for r in records}
+    pending = list(payload.get("evidence_ids", []))
+    result = set()
+    while pending:
+        rid = pending.pop()
+        if rid in result:
+            continue
+        result.add(rid)
+        target = by_id.get(rid)
+        if target is not None:
+            pending.extend(target.payload.get("evidence_ids", []))
+    return result
+
+
+def evidence_versions(payload, records):
+    """Snapshot referenced versioned evidence separately from design inputs.
+
+    Documents/messages have no optimistic versions and remain ownership-checked.
+    """
+    by_id = {r.id: r for r in records}
+    return {
+        rid: by_id[rid].version
+        for rid in sorted(evidence_references(payload, records))
+        if rid in by_id
+    }
+
+
+def evidence_stale(record, records):
+    current = evidence_versions(record.payload, records)
+    expected = record.payload.get("evidence_versions", {})
+    by_id = {r.id: r for r in records}
+    return expected != current or any(
+        by_id[rid].status == "rejected" for rid in current
+    )
+
+
+def upstream_links(record):
+    """Typed reasoning links; dependency cycles are traversed by stale()."""
+    payload = record.payload
+    if record.kind == "core_use_case":
+        return [(rid, "use_case") for rid in payload.get("use_case_ids", [])]
     if record.kind == "volatility":
-        linked = [
-            (rid, "core_use_case")
-            for rid in record.payload.get("core_use_case_ids", [])
+        return [(rid, "core_use_case") for rid in payload.get("core_use_case_ids", [])]
+    if record.kind == "boundary":
+        return [(rid, "volatility") for rid in payload.get("volatility_ids", [])] + [
+            (rid, "boundary") for rid in payload.get("dependencies", [])
         ]
-    elif record.kind == "boundary":
-        linked = [
-            (rid, "volatility") for rid in record.payload.get("volatility_ids", [])
-        ]
-    elif record.kind == "design_validation":
-        for collaboration in record.payload.get("collaborations", []):
+    linked = []
+    if record.kind == "design_validation":
+        for collaboration in payload.get("collaborations", []):
             linked.append((collaboration["core_use_case_id"], "core_use_case"))
             linked += [(rid, "boundary") for rid in collaboration["component_ids"]]
-        for scenario in record.payload.get("scenarios", []):
+        for scenario in payload.get("scenarios", []):
             linked.append((scenario["volatility_id"], "volatility"))
             linked += [
                 (rid, "boundary")
                 for rid in scenario["changed_component_ids"]
                 + scenario["unchanged_component_ids"]
             ]
+    return linked
+
+
+def stale(record, records):
+    # Walk each reachable record once. A reviewed cycle stays visible as a
+    # structural finding, without recursion or hiding a pending/stale member.
     by_id = {r.id: r for r in records}
-    return any(
-        rid not in by_id
-        or by_id[rid].kind != kind
-        or by_id[rid].status != "approved"
-        or stale(by_id[rid], records)
-        for rid, kind in linked
-    )
+    snapshots = {}
+    pending, visited = [record], set()
+    while pending:
+        current = pending.pop()
+        if current.id in visited:
+            continue
+        visited.add(current.id)
+        if evidence_stale(current, records):
+            return True
+        stage = next((s for s, kind in STAGES.items() if kind == current.kind), None)
+        if stage:
+            if stage not in snapshots:
+                snapshots[stage] = versions(records, stage)
+            if current.payload.get("input_versions") != snapshots[stage]:
+                return True
+        for rid, kind in upstream_links(current):
+            target = by_id.get(rid)
+            if (
+                target is None
+                or not is_design(target)
+                or target.kind != kind
+                or (
+                    target.status != "approved"
+                    if kind != "use_case"
+                    else target.status == "rejected"
+                )
+            ):
+                return True
+            pending.append(target)
+    return False
 
 
 def _refs(values, kind, by_id, field):
     for value in values:
         record = by_id.get(value)
-        if record is None or record.kind != kind or record.status == "rejected":
+        if (
+            record is None
+            or not is_design(record)
+            or record.kind != kind
+            or record.status == "rejected"
+        ):
             raise ValueError(
                 f"{field}: unknown, rejected, wrong-kind or cross-project {kind} reference: {value}"
             )
@@ -166,12 +233,17 @@ def validate_payload(
     data = {"title": title, "description": description, **clean}
     model = UseCaseInput if kind == "use_case" else SCHEMAS[kind]
     parsed = model.model_validate(data).model_dump()
-    if not set(parsed["evidence_ids"]) <= (
+    evidence_records = (
+        list(references.values())
+        if references is not None
+        else records_for(db, project_id)
+    )
+    if not evidence_references(parsed, evidence_records) <= (
         allowed_evidence
         if allowed_evidence is not None
         else evidence_ids(db, project_id)
     ):
-        raise ValueError("Unknown or cross-project evidence id")
+        raise ValueError("Unknown, rejected or cross-project evidence id")
     if kind == "core_use_case":
         _refs(parsed["use_case_ids"], "use_case", by_id, "use_case_ids")
         _refs(
@@ -215,6 +287,7 @@ def intake(db, project_id, body):
     data = body.model_dump()
     title, description = data.pop("title"), data.pop("description")
     validate_payload(db, project_id, "use_case", title, description, data)
+    data["evidence_versions"] = evidence_versions(data, records_for(db, project_id))
     record = KnowledgeRecord(
         project_id=project_id,
         kind="use_case",
@@ -234,7 +307,7 @@ def usable(record, records, by_id, valid_ids=None):
     if (
         (valid_ids is not None and record.id not in valid_ids)
         or record.status != "approved"
-        or (record.kind != "use_case" and stale(record, records))
+        or stale(record, records)
     ):
         return False
     fields = {
@@ -247,7 +320,11 @@ def usable(record, records, by_id, valid_ids=None):
     for field in fields:
         for rid in record.payload.get(field, []):
             target = by_id.get(rid)
-            if target is None or target.status == "rejected":
+            if (
+                target is None
+                or target.status == "rejected"
+                or (valid_ids is not None and target.id not in valid_ids)
+            ):
                 return False
             if record.kind != "core_use_case" and not usable(
                 target, records, by_id, valid_ids
@@ -263,6 +340,8 @@ def valid_record_ids(db, project_id, records):
     allowed = evidence_ids(db, project_id)
     valid = set()
     for record in records:
+        if not is_design(record):
+            continue
         try:
             validate_payload(
                 db,
@@ -281,7 +360,7 @@ def valid_record_ids(db, project_id, records):
 
 
 def prerequisites(db, project_id, stage):
-    records = design_records(db, project_id)
+    records = records_for(db, project_id)
     by_id = {r.id: r for r in records}
     valid_ids = valid_record_ids(db, project_id, records)
     required = {
@@ -296,7 +375,7 @@ def prerequisites(db, project_id, stage):
         if not any(
             r.kind == kind
             and (
-                r.status != "rejected" and r.id in valid_ids
+                r.status != "rejected" and r.id in valid_ids and not stale(r, records)
                 if stage == "core"
                 else usable(r, records, by_id, valid_ids)
             )
@@ -324,10 +403,10 @@ def context_for(db, project_id, records, stage):
     by_id = {r.id: r for r in records}
     valid_ids = valid_record_ids(db, project_id, records)
     for r in records:
-        if r.kind in PRIOR[stage] and r.status != "rejected":
+        if is_design(r) and r.kind in PRIOR[stage] and r.status != "rejected":
             value = serialize(r)
             value["reviewed_usable"] = usable(r, records, by_id, valid_ids)
-            value["stale"] = r.kind != "use_case" and stale(r, records)
+            value["stale"] = stale(r, records)
             value.pop("history", None)
             value.pop("created_at", None)
             value.pop("updated_at", None)
@@ -374,7 +453,7 @@ def save_generated(db, project_id, stage, result, inputs, context_limits):
     values = [r.model_dump() for r in result.records]
     kind = STAGES[stage]
     snapshot = versions(inputs, stage)
-    existing = design_records(db, project_id)
+    existing = records_for(db, project_id)
     ids = [uid() for _ in values]
     batch = {}
     if stage == "decomposition":
@@ -402,6 +481,7 @@ def save_generated(db, project_id, stage, result, inputs, context_limits):
             payload.update(
                 design_engine=True,
                 input_versions=snapshot,
+                evidence_versions=evidence_versions(payload, inputs),
                 context_limits=context_limits,
             )
             duplicate = next(
@@ -443,6 +523,7 @@ def save_generated(db, project_id, stage, result, inputs, context_limits):
                 id=ids[i],
                 project_id=project_id,
                 kind="boundary",
+                payload={"design_engine": True},
                 title=value["title"],
                 status="pending",
             )
@@ -492,22 +573,37 @@ def save_generated(db, project_id, stage, result, inputs, context_limits):
                 **value,
                 "design_engine": True,
                 "input_versions": snapshot,
+                "evidence_versions": evidence_versions(value, inputs),
                 "context_limits": context_limits,
             }
         )
-    # Guard against edits/new inputs while the provider was running.
+    # Guard against evidence and design edits while the provider was running.
+    evidence_payloads = [
+        *proposals,
+        *(r.payload for r in inputs if is_design(r) and r.kind in PRIOR[stage]),
+    ]
+    evidence_snapshot = [
+        evidence_versions(value, inputs) for value in evidence_payloads
+    ]
     db.expire_all()
-    if versions(design_records(db, project_id), stage) != snapshot:
+    refreshed = records_for(db, project_id)
+    if versions(refreshed, stage) != snapshot or any(
+        previous != evidence_versions(value, refreshed)
+        for value, previous in zip(evidence_payloads, evidence_snapshot, strict=True)
+    ):
         raise HTTPException(
-            409, "Design inputs changed during generation; reload and retry."
+            409,
+            "Design inputs or supporting evidence changed during generation; reload and retry.",
         )
     return save_proposals(db, project_id, proposals, record_ids=ids)
 
 
 def view(db, project_id):
-    records = design_records(db, project_id)
+    records = records_for(db, project_id)
     by_id = {r.id: r for r in records}
-    groups = {kind: [r for r in records if r.kind == kind] for kind in KINDS}
+    groups = {
+        kind: [r for r in records if is_design(r) and r.kind == kind] for kind in KINDS
+    }
     active = {
         kind: [r for r in rows if r.status != "rejected"]
         for kind, rows in groups.items()
@@ -527,7 +623,7 @@ def view(db, project_id):
         )
 
     for r in records:
-        if r.status == "rejected":
+        if not is_design(r) or r.status == "rejected":
             continue
         try:
             validate_payload(
@@ -545,7 +641,7 @@ def view(db, project_id):
             finding(
                 "invalid_reference_or_payload", f"{r.title}: {error}", [r.id], "error"
             )
-        if r.kind != "use_case" and stale(r, records):
+        if stale(r, records):
             finding(
                 "stale_validation"
                 if r.kind == "design_validation"
@@ -613,6 +709,13 @@ def view(db, project_id):
                 )
             else:
                 graph.add_edge(r.id, dep)
+                if not usable(by_id[dep], records, by_id, valid_ids):
+                    finding(
+                        "unusable_dependency",
+                        f"{r.title} depends on an unreviewed or stale component; review current dependency inputs before validation.",
+                        [r.id, dep],
+                        "error",
+                    )
     # Strongly connected sets are linear-time and cannot explode like all cycles.
     for members in nx.strongly_connected_components(graph):
         if len(members) > 1 or any(graph.has_edge(rid, rid) for rid in members):
@@ -680,7 +783,7 @@ def view(db, project_id):
 
     def output(r):
         value = serialize(r)
-        if r.kind != "use_case":
+        if is_design(r):
             value["payload"] = {**r.payload, "stale": stale(r, records)}
         return value
 

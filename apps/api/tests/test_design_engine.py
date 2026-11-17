@@ -964,3 +964,400 @@ def test_review_rejects_cross_project_or_rejected_typed_links(
         )
         == b
     )
+
+
+def supporting_evidence(pid):
+    with SessionLocal() as db:
+        row = KnowledgeRecord(
+            project_id=pid,
+            kind="evidence",
+            title="Supplier commitment",
+            description="Protocol migration confirmed",
+            status="approved",
+            evidence_status="human_confirmed",
+            payload={},
+        )
+        db.add(row)
+        db.commit()
+        return row.id
+
+
+@pytest.mark.parametrize(
+    "change", [{"description": "Supplier withdrew commitment"}, {"status": "rejected"}]
+)
+@pytest.mark.parametrize("link_stage", ["use_case", "validation"])
+def test_review_evidence_changes_propagate_freshness(
+    client, monkeypatch, change, link_stage
+):
+    pid = project(client)
+    eid = supporting_evidence(pid)
+    if link_stage == "use_case":
+        u = approve(client, pid, intake(client, pid, evidence_ids=[eid]).json())
+        provider(monkeypatch, [core(u["id"])])
+        co = approve(client, pid, generate(client, pid, "core").json()["records"][0])
+        provider(monkeypatch, [volatility(co["id"])])
+        v = approve(
+            client, pid, generate(client, pid, "volatility").json()["records"][0]
+        )
+        provider(monkeypatch, [component(v["id"])])
+        b = approve(
+            client, pid, generate(client, pid, "decomposition").json()["records"][0]
+        )
+    else:
+        u, co, v, b = stages(client, pid, monkeypatch)
+    proposal = validation(co["id"], v["id"], b["id"])
+    if link_stage == "validation":
+        proposal["evidence_ids"] = [eid]
+    provider(monkeypatch, [proposal])
+    report = approve(
+        client, pid, generate(client, pid, "validation").json()["records"][0]
+    )
+    before = client.get(f"/api/projects/{pid}/design").json()
+    assert before["readiness"]["validation"]
+    response = client.patch(
+        f"/api/projects/{pid}/records/{eid}", json={"expected_version": 1, **change}
+    )
+    assert response.status_code == 200, response.text
+    after = client.get(f"/api/projects/{pid}/design").json()
+    assert not after["readiness"]["validation"]
+    assert next(r for r in after["validations"] if r["id"] == report["id"])["payload"][
+        "stale"
+    ]
+    assert any(f["code"] == "stale_validation" for f in after["findings"])
+    if link_stage == "validation":
+        assert report["payload"]["evidence_versions"] == {eid: 1}
+        assert eid not in report["payload"]["input_versions"]
+    else:
+        assert not after["readiness"]["core_use_cases"]
+        assert generate(client, pid, "core").status_code == 422
+
+
+def test_rejected_evidence_is_blocked_on_intake_generation_and_review(
+    client, monkeypatch
+):
+    pid = project(client)
+    _u, co, v, b = stages(client, pid, monkeypatch)
+    eid = supporting_evidence(pid)
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/records/{eid}",
+            json={"expected_version": 1, "status": "rejected"},
+        ).status_code
+        == 200
+    )
+    assert intake(client, pid, evidence_ids=[eid]).status_code == 422
+    provider(
+        monkeypatch, [{**validation(co["id"], v["id"], b["id"]), "evidence_ids": [eid]}]
+    )
+    assert generate(client, pid, "validation").status_code == 422
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/records/{b['id']}",
+            json={
+                "expected_version": b["version"],
+                "payload": {**b["payload"], "evidence_ids": [eid]},
+            },
+        ).status_code
+        == 422
+    )
+    assert client.get(f"/api/projects/{pid}/design").json()["validations"] == []
+
+
+def test_evidence_snapshots_are_managed_and_refresh_on_human_payload_edit(
+    client, monkeypatch
+):
+    pid = project(client)
+    _u, co, v, b = stages(client, pid, monkeypatch)
+    eid = supporting_evidence(pid)
+    provider(
+        monkeypatch, [{**validation(co["id"], v["id"], b["id"]), "evidence_ids": [eid]}]
+    )
+    report = approve(
+        client, pid, generate(client, pid, "validation").json()["records"][0]
+    )
+    assert report["payload"].get("evidence_versions") == {eid: 1}
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/records/{report['id']}",
+            json={
+                "expected_version": report["version"],
+                "payload": {**report["payload"], "evidence_versions": {eid: 999}},
+            },
+        ).status_code
+        == 422
+    )
+    client.patch(
+        f"/api/projects/{pid}/records/{eid}",
+        json={"expected_version": 1, "description": "Confirmed updated commitment"},
+    )
+    refreshed = client.patch(
+        f"/api/projects/{pid}/records/{report['id']}",
+        json={
+            "expected_version": report["version"],
+            "payload": report["payload"],
+            "status": "pending",
+        },
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["payload"]["evidence_versions"] == {eid: 2}
+    assert refreshed.json()["history"][-1]["payload"]["evidence_versions"] == {eid: 1}
+    approve(client, pid, refreshed.json())
+    assert client.get(f"/api/projects/{pid}/design").json()["readiness"]["validation"]
+
+
+@pytest.mark.parametrize("cyclic", [False, True])
+def test_unreviewed_dependency_blocks_validation_until_reviewed(
+    client, monkeypatch, cyclic
+):
+    pid = project(client)
+    _u, co, v, original = stages(client, pid, monkeypatch)
+    assert (
+        client.patch(
+            f"/api/projects/{pid}/records/{original['id']}",
+            json={"expected_version": original["version"], "status": "rejected"},
+        ).status_code
+        == 200
+    )
+    provider(
+        monkeypatch,
+        [
+            component(v["id"], "Workflow", ["Supplier"]),
+            component(v["id"], "Supplier", ["Workflow"] if cyclic else []),
+        ],
+    )
+    pair = generate(client, pid, "decomposition").json()["records"]
+    workflow = approve(client, pid, pair[0])
+    provider(monkeypatch, [validation(co["id"], v["id"], workflow["id"])])
+    response = generate(client, pid, "validation")
+    assert response.status_code == 422, response.text
+    view = client.get(f"/api/projects/{pid}/design").json()
+    assert not view["readiness"]["decomposition"]
+    assert not view["readiness"]["validation"]
+    assert next(r for r in view["components"] if r["id"] == workflow["id"])["payload"][
+        "stale"
+    ]
+    assert any(f["code"] == "unusable_dependency" for f in view["findings"])
+    approve(client, pid, pair[1])
+    provider(monkeypatch, [validation(co["id"], v["id"], workflow["id"])])
+    response = generate(client, pid, "validation")
+    assert response.status_code == 200, response.text
+    approve(client, pid, response.json()["records"][0])
+    assert client.get(f"/api/projects/{pid}/design").json()["readiness"]["validation"]
+    if cyclic:
+        assert any(
+            f["code"] == "dependency_cycle"
+            for f in client.get(f"/api/projects/{pid}/design").json()["findings"]
+        )
+
+
+def test_dependency_evidence_freshness_propagates_through_approved_cycle(
+    client, monkeypatch
+):
+    pid = project(client)
+    _u, co, v, _b = stages(client, pid, monkeypatch)
+    eid = supporting_evidence(pid)
+    provider(
+        monkeypatch,
+        [
+            component(v["id"], "Workflow", ["Supplier"]),
+            {**component(v["id"], "Supplier", ["Workflow"]), "evidence_ids": [eid]},
+        ],
+    )
+    pair = [
+        approve(client, pid, r)
+        for r in generate(client, pid, "decomposition").json()["records"]
+    ]
+    provider(monkeypatch, [validation(co["id"], v["id"], pair[0]["id"])])
+    report = approve(
+        client, pid, generate(client, pid, "validation").json()["records"][0]
+    )
+    assert client.get(f"/api/projects/{pid}/design").json()["readiness"]["validation"]
+    client.patch(
+        f"/api/projects/{pid}/records/{eid}",
+        json={"expected_version": 1, "description": "Protocol promise changed"},
+    )
+    view = client.get(f"/api/projects/{pid}/design").json()
+    assert not view["readiness"]["validation"]
+    assert next(r for r in view["validations"] if r["id"] == report["id"])["payload"][
+        "stale"
+    ]
+    assert all(
+        next(r for r in view["components"] if r["id"] == b["id"])["payload"]["stale"]
+        for b in pair
+    )
+
+
+def test_initial_context_limits_count_source_and_record_excerpts(client):
+    from galvanise.models import Conversation, Message
+    from galvanise.services.knowledge import bounded_context
+
+    pid = project(client)
+    with SessionLocal() as db:
+        conversation = Conversation(project_id=pid, title="Discovery")
+        db.add(conversation)
+        db.flush()
+        for i in range(13):
+            db.add(
+                SourceDocument(project_id=pid, name=f"Source {i}", content="d" * 5001)
+            )
+        for i in range(17):
+            db.add(
+                Message(
+                    project_id=pid,
+                    conversation_id=conversation.id,
+                    role="user",
+                    content="m" * 2001,
+                )
+            )
+        for i in range(61):
+            db.add(
+                KnowledgeRecord(
+                    project_id=pid,
+                    kind="evidence",
+                    title="t" * 301,
+                    description="r" * 2001,
+                    payload={"text": "p" * 2600},
+                )
+            )
+        db.commit()
+        context = bounded_context(db, pid)
+    limits = context["context_limits"]
+    assert limits["documents_omitted"] == 1
+    assert limits["messages_omitted"] == 1
+    assert limits["document_texts_truncated"] == 12
+    assert limits["document_characters_omitted"] == 12
+    assert limits["message_texts_truncated"] == 16
+    assert limits["message_characters_omitted"] == 16
+    assert limits["knowledge_records_omitted"] == 1
+    assert limits["knowledge_titles_truncated"] == 60
+    assert limits["knowledge_descriptions_truncated"] == 60
+    assert limits["knowledge_payloads_truncated"] == 60
+    assert all(len(d["untrusted_text"]) == 5000 for d in context["documents"])
+    assert all(len(m["untrusted_text"]) == 2000 for m in context["messages"])
+
+
+def test_answer_excerpts_count_only_selected_answers_and_rejected_records_are_excluded(
+    client,
+):
+    from galvanise.services.knowledge import bounded_context
+
+    pid = project(client)
+    with SessionLocal() as db:
+        for i in range(21):
+            db.add(
+                KnowledgeRecord(
+                    project_id=pid,
+                    kind="answer",
+                    title="a" * 301,
+                    description="a" * 2001,
+                    payload={"answer": "a" * 2600},
+                )
+            )
+        db.add(
+            KnowledgeRecord(
+                project_id=pid,
+                kind="answer",
+                title="Rejected",
+                status="rejected",
+                payload={},
+            )
+        )
+        db.commit()
+        context = bounded_context(db, pid)
+    limits = context["context_limits"]
+    assert limits["answer_records_omitted"] == 1
+    assert limits["answer_titles_truncated"] == 20
+    assert limits["answer_descriptions_truncated"] == 20
+    assert limits["answer_payloads_truncated"] == 20
+    assert limits["knowledge_records_omitted"] == 0
+    assert len(context["stakeholder_answers"]) == 20
+
+
+def test_source_excerpts_persist_and_raise_design_findings(client, monkeypatch):
+    from galvanise.models import Conversation, Message
+
+    pid = project(client)
+    u = intake(client, pid).json()
+    with SessionLocal() as db:
+        conversation = Conversation(project_id=pid, title="Interview")
+        db.add(conversation)
+        db.flush()
+        for i in range(13):
+            db.add(
+                SourceDocument(project_id=pid, name=f"Source {i}", content="d" * 5001)
+            )
+        for i in range(17):
+            db.add(
+                Message(
+                    project_id=pid,
+                    conversation_id=conversation.id,
+                    role="user",
+                    content="m" * 2001,
+                )
+            )
+        db.commit()
+    fake = provider(monkeypatch, [core(u["id"])])
+    response = generate(client, pid, "core")
+    assert response.status_code == 200, response.text
+    record = response.json()["records"][0]
+    limits = record["payload"]["context_limits"]
+    assert limits["documents_omitted"] == 1 and limits["document_texts_truncated"] == 12
+    assert limits["messages_omitted"] == 1 and limits["message_texts_truncated"] == 16
+    sent = json.loads(fake.responses.parse.call_args.kwargs["input"])
+    assert sent["context_limits"] == limits
+    assert any(
+        f["code"] == "context_truncated" and record["id"] in f["record_ids"]
+        for f in client.get(f"/api/projects/{pid}/design").json()["findings"]
+    )
+
+
+def test_nested_evidence_versions_and_rejections_are_checked(client, monkeypatch):
+    pid = project(client)
+    _u, co, v, b = stages(client, pid, monkeypatch)
+    outer = supporting_evidence(pid)
+    inner = supporting_evidence(pid)
+    with SessionLocal() as db:
+        db.get(KnowledgeRecord, outer).payload = {"evidence_ids": [inner]}
+        db.commit()
+    proposal = {**validation(co["id"], v["id"], b["id"]), "evidence_ids": [outer]}
+    provider(monkeypatch, [proposal])
+    report = approve(
+        client, pid, generate(client, pid, "validation").json()["records"][0]
+    )
+    assert report["payload"]["evidence_versions"] == {outer: 1, inner: 1}
+    client.patch(
+        f"/api/projects/{pid}/records/{inner}",
+        json={"expected_version": 1, "status": "rejected"},
+    )
+    assert not client.get(f"/api/projects/{pid}/design").json()["readiness"][
+        "validation"
+    ]
+    provider(monkeypatch, [proposal])
+    response = generate(client, pid, "validation")
+    assert response.status_code == 422, response.text
+
+
+def test_evidence_changes_while_provider_runs_save_nothing(client, monkeypatch):
+    from galvanise.agents.design_schemas import ValidationResult
+
+    pid = project(client)
+    _u, co, v, b = stages(client, pid, monkeypatch)
+    eid = supporting_evidence(pid)
+    proposal = {**validation(co["id"], v["id"], b["id"]), "evidence_ids": [eid]}
+    fake = provider(monkeypatch, [proposal])
+
+    async def change_evidence(**kwargs):
+        with SessionLocal() as db:
+            row = db.get(KnowledgeRecord, eid)
+            row.description = "Changed while model runs"
+            row.version += 1
+            db.commit()
+        return SimpleNamespace(
+            status="completed",
+            output_parsed=ValidationResult.model_validate({"records": [proposal]}),
+        )
+
+    fake.responses.parse.side_effect = change_evidence
+    response = generate(client, pid, "validation")
+    assert response.status_code == 409, response.text
+    assert client.get(f"/api/projects/{pid}/design").json()["validations"] == []
