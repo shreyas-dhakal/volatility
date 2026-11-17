@@ -10,7 +10,7 @@ def seed(db,user):
     document=(root/'examples/wholesale-requirements.md').read_text()
     nodes,edges,metadata=normalize(json.loads((root/'examples/wholesale-graphify.json').read_text()))
     metadata['synthetic']=True
-    project=Project(user_id=user.id,name='Wholesale ERP Modernisation — synthetic demo',description='Explicitly seeded fictional requirements and structural graph. No live integration or AI analysis.',system_type='existing',objective='Explore supplier adapters and warehouse allocation boundaries')
+    project=Project(user_id=user.id,name='Wholesale ERP Modernisation - synthetic demo',description='Explicitly seeded fictional requirements and structural graph. No live integration or AI analysis.',system_type='existing',objective='Explore supplier adapters and warehouse allocation boundaries')
     db.add(project);db.flush()
     doc=SourceDocument(project_id=project.id,name='Synthetic wholesale requirements',content=document,media_type='text/markdown',metadata_json={'synthetic':True})
     graph=TechnicalGraph(project_id=project.id,name='Synthetic legacy wholesale graph',nodes_json=nodes,edges_json=edges,metadata_json=metadata)

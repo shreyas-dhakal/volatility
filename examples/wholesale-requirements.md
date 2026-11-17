@@ -1,4 +1,4 @@
-# Wholesale ERP — synthetic demonstration requirements
+# Wholesale ERP - synthetic demonstration requirements
 
 This fictional example is for learning Galvanise. It is not a connected repository or live AI finding.
 

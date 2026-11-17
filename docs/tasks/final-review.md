@@ -8,7 +8,7 @@ Reviewed the current whole project against `PROMPT.md`, `packages/shared/API_CON
 
 ## Findings
 
-### Resolved P1 — Persisted stakeholder answers and human corrections were omitted from AI context
+### Resolved P1 - Persisted stakeholder answers and human corrections were omitted from AI context
 
 Disposition: independently verified fixed. Shared context now includes bounded descriptions, explicit persistent `stakeholder_answers`, approved-record priority and counts for omitted records. The original isolated reproduction now reports **answer_text_in_context=True**. The new route-to-candidate regression saves an answer, ages out chat history, and asserts that its text reaches the model input.
 
@@ -20,7 +20,7 @@ Reproduced with a real in-memory SQLAlchemy database: created a human-confirmed 
 
 Fix: include bounded record descriptions and explicit question-to-answer context in the shared retrieval representation; ensure the record-list tools use the same representation. Add a regression that saves a stakeholder answer via the actual route, then verifies a future model request contains its text even with no recent answer message. Preserve human confirmation as a statement, not independently verified fact.
 
-### Resolved P2 — Title-only deduplication silently discarded changed architecture proposals
+### Resolved P2 - Title-only deduplication silently discarded changed architecture proposals
 
 Disposition: independently verified fixed. Equivalent substantive content deduplicates; changed content produces a separate pending proposal with `supersedes_id`, revision metadata and predecessor snapshot, preserving approved state. Traceability identity includes graph and decision IDs. The original isolated reproduction now returns a **new ID, updated description and supplier-adapter boundary**, while retaining the approved predecessor unchanged.
 
