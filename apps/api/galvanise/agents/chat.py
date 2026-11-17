@@ -1,10 +1,14 @@
 import asyncio
 import json
+import logging
+from openai import AuthenticationError
 from sqlalchemy import select
 from galvanise.config import settings
 from galvanise.models import Message
 from galvanise.agents.client import SYSTEM
 from galvanise.agents.tools import definitions, invoke
+
+logger = logging.getLogger(__name__)
 
 
 def event(name,data):
@@ -51,8 +55,13 @@ async def stream_chat(client, db, project_id, conversation_id, user, content, re
     except asyncio.CancelledError:
         failure='Client disconnected'
         raise
-    except Exception:
-        failure='AI request failed. Check server configuration and provider availability; partial output, if any, is retained.'
+    except Exception as exc:
+        # Provider messages may contain fragments of credentials. Log only safe metadata.
+        logger.warning('AI request failed: exception_type=%s status=%s', type(exc).__name__, getattr(exc, 'status_code', None))
+        if isinstance(exc, AuthenticationError):
+            failure='OpenAI rejected the configured API key (401). Update OPENAI_API_KEY in the server .env and restart the API. Do not paste credentials into chat.'
+        else:
+            failure='AI request failed. Check server configuration and provider availability; partial output, if any, is retained.'
         yield event('error',{'message':failure})
     finally:
         await client.close()

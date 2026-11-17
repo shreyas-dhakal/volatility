@@ -61,3 +61,15 @@ The smoke script creates uniquely named accounts/projects without deleting exist
 Chat captures: `.impeccable/review/desktop.png`, `.impeccable/review/mobile.png`. Review reports: `docs/tasks/final-review.md`, `docs/tasks/visual-review.md`. Detailed implementation reports are alongside them. Final graph capture is `.impeccable/review/graph.png`. After the targeted fixes, actual keyboard selection returned selected-node count1 and the API-backed evidence inspector was present; compact edge labels remained readable. All final production proxy smoke checks passed again.
 
 Private GitHub repositories, teams/SSO, OCR, vector retrieval, distributed job workers and automated stakeholder outreach are outside this MVP. Deployment supports one API worker. Imported dependency claims do not establish runtime behaviour, measured savings or verified business ownership.
+
+## Follow-up: live OpenAI configuration and chat
+
+A real user chat failure was diagnosed as provider AuthenticationError401. The replacement credential supplied by the user was saved only to the ignored owner-readable `.env`; the API container was recreated to reload it. No credential value was printed, logged or added to Git.
+
+Observed checks after replacement:
+
+- A minimal real Responses API request using the configured `gpt-6-luna` model and actual tool definitions returned status completed and text OK.
+- A synthetic account/project connectivity message completed through the production frontend proxy with live SSE deltas, done event and persisted assistant text. No existing user project data was sent for the check.
+- Full backend suite now40 passed in2.42s, including a regression verifying that provider401 produces an actionable key-configuration error without exposing provider error contents. Other provider errors log exception class/status only.
+
+Live streaming is now verified; GitHub OAuth consent remains unverified. Architecture extraction/generation remain covered by mocked provider tests rather than live end-to-end checks.

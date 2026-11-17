@@ -102,6 +102,29 @@ class FakeStream:
 
 
 @pytest.mark.asyncio
+async def test_chat_authentication_failure_explains_configuration_without_exposing_provider_message():
+    import httpx
+    from openai import AuthenticationError
+    from galvanise.agents.chat import stream_chat
+    from galvanise.models import Conversation
+    with TestClient(app) as c:
+        pid=create(c)
+        with SessionLocal() as db:
+            user=db.scalar(select(User).where(User.email=='intel@example.com'))
+            conversation=db.scalar(select(Conversation).where(Conversation.project_id==pid))
+            response=httpx.Response(401,request=httpx.Request('POST','https://api.openai.com/v1/responses'))
+            error=AuthenticationError('Incorrect API key: sensitive-provider-detail',response=response,body=None)
+            client=SimpleNamespace(responses=SimpleNamespace(create=AsyncMock(side_effect=error)),close=AsyncMock())
+            request=SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+            output=''.join([item async for item in stream_chat(client,db,pid,conversation.id,user,'Hello',request)])
+            assert 'OpenAI rejected the configured API key (401)' in output
+            assert 'OPENAI_API_KEY' in output and 'restart' in output
+            assert 'sensitive-provider-detail' not in output
+            assert 'event: done' not in output
+            client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_streaming_runs_real_tool_registry_persists_text_and_handles_partial_failure():
     from galvanise.agents.chat import stream_chat
     from galvanise.models import Message,Conversation
