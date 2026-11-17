@@ -45,6 +45,33 @@ GitHub tokens are encrypted at rest; random session tokens and OAuth states are 
 
 ## Ingestion and review
 
+### Guided system design
+
+Open **Design process** in a project to work from gathered use cases toward a
+reviewed system design. Source code is optional:
+
+1. Record detailed use cases, including actors, steps, outcomes and variations.
+2. Propose and review core cases that express the business essence and retain
+   explicit links to the original cases.
+3. Identify independent reasons for change over time or across customers.
+4. Propose components that hide those changes behind stable contracts, separating
+   client, manager, engine, resource access, resource and utility responsibilities.
+5. Review proposed collaborations and change-containment scenarios alongside
+   deterministic coverage, reference, dependency and freshness findings.
+
+Each AI stage is explicitly requested and produces pending proposals. Review and
+approve current inputs before progressing. Changes to upstream design records or
+referenced versioned evidence make dependent reasoning stale; regenerate and review
+it. Pending or stale component dependencies block their consumers from being usable
+validation inputs. Context omissions and excerpts are reported rather than hidden.
+
+Approval and readiness do not establish architecture correctness or executed test
+coverage. Source documents, messages and external state have no version snapshots;
+live model behavior and PostgreSQL concurrency remain outside the isolated checks.
+See the [engine API guide](apps/api/README.md),
+[review fixes](apps/api/REVIEW_FIXES.md), and
+[independent integrated review](docs/reviews/2026-11-17-volatility-engine-independent-review.md).
+
 Upload TXT, MD, PDF or DOCX, up to 10 MiB (`MAX_UPLOAD_BYTES`). Extracted text is limited to 300,000 characters; PDF supports at most 200 pages and no encryption; scanned PDFs require OCR outside this MVP. DOCX expanded archive content is limited to 20 MB. Parsing runs in a separate process with a 20-second wall timeout and CPU limits; Linux additionally enforces a 768 MiB address-space limit. Secret-like assignments, common tokens and PEM private keys are redacted. Redaction is best effort; do not upload credentials.
 
 Ingestion jobs persist in PostgreSQL and are consumed by the API's background thread. Interrupted running jobs return to queued on restart; run **one API process/worker** in this MVP. Job status is visible in the workspace; failed jobs retain a safe error message and users can resubmit. Raw queued upload material is encrypted and removed when complete or failed. Repository ingestion never checks out or executes code. It indexes up to 3,000 file nodes and a bounded selection of 300 text files, with zero invented dependency edges; import Graphify for structural relationships.
