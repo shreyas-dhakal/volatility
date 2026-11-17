@@ -1,0 +1,45 @@
+# Credentials are injected at runtime; never bake local environment files into images.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+
+# Host dependencies and compiled artifacts must not overwrite container-native builds.
+.git
+**/.git
+node_modules
+**/node_modules
+.venv
+**/.venv
+.next
+**/.next
+**/__pycache__
+**/*.py[cod]
+**/*.tsbuildinfo
+
+# Local test, tool, database, and browser artifacts.
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+**/.ruff_cache
+.mypy_cache
+**/.mypy_cache
+.coverage
+**/.coverage
+htmlcov
+**/htmlcov
+coverage
+**/coverage
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+screenshots
+**/screenshots
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.DS_Store
+
+# Source and examples remain included for compilation, migrations, and demo fixtures.

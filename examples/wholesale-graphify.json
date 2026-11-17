@@ -1,0 +1,18 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {"synthetic": true, "provenance": "Manually authored demonstration in Graphify node-link export dialect", "schema_repository": "https://github.com/Graphify-Labs/graphify", "schema_commit": "480b61ed91cbc08177dc2c60caa9ffd6c9b95749"},
+  "nodes": [
+    {"id": "supplier-client", "label": "SupplierAPIClient", "file_type": "code", "source_file": "legacy/suppliers/client.py"},
+    {"id": "purchasing", "label": "PurchaseService", "file_type": "code", "source_file": "legacy/purchasing/service.py"},
+    {"id": "inventory", "label": "InventoryAllocation", "file_type": "code", "source_file": "legacy/inventory/allocation.py"},
+    {"id": "orders", "label": "OrderProcessing", "file_type": "code", "source_file": "legacy/orders/service.py"},
+    {"id": "pricing", "label": "CustomerPricing", "file_type": "code", "source_file": "legacy/pricing/policy.py"}
+  ],
+  "links": [
+    {"source": "purchasing", "target": "supplier-client", "relation": "calls", "confidence": "EXTRACTED", "synthetic": true},
+    {"source": "orders", "target": "purchasing", "relation": "calls", "confidence": "EXTRACTED", "synthetic": true},
+    {"source": "orders", "target": "inventory", "relation": "calls", "confidence": "EXTRACTED", "synthetic": true},
+    {"source": "orders", "target": "pricing", "relation": "calls", "confidence": "EXTRACTED", "synthetic": true}
+  ]
+}

@@ -1,0 +1,11 @@
+export type User = {id:string;name:string;email:string;github_connected:boolean};
+export type Project = {id:string;name:string;description:string;objective:string;system_type:string};
+export type Conversation = {id:string;title:string};
+export type Message = {id:string;role:string;content:string;metadata_json?:Record<string,unknown>};
+export type Knowledge = {id:string;kind:string;title:string;description:string;status:string;evidence_status:string;version:number;payload:Record<string,unknown>;history:unknown[]};
+export type Source = {id:string;name:string;kind:string;status:string};
+export type Job = {id:string;kind:string;status:string;error?:string};
+export type Document = {id:string;name:string;content?:string};
+export type GraphSummary = {id:string;name:string;node_count:number;edge_count:number};
+export type GraphNode = {id:string;label:string;type:string;file_path?:string;metadata?:Record<string,unknown>};
+export type GraphData = {id:string;name:string;nodes:GraphNode[];edges:{id:string;source:string;target:string;type:string;metadata?:Record<string,unknown>}[];summary:Record<string,unknown>};

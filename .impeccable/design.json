@@ -1,0 +1,433 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T08:02:09.381908+00:00",
+  "title": "Design System: Galvanise",
+  "extensions": {
+    "colorMeta": {
+      "color-accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-on-accent": {
+        "role": "primary",
+        "displayName": "On Accent",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-accent-muted": {
+        "role": "primary",
+        "displayName": "Accent Muted",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-background-body": {
+        "role": "neutral",
+        "displayName": "Background Body",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-background-surface": {
+        "role": "neutral",
+        "displayName": "Background Surface",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-background-card": {
+        "role": "neutral",
+        "displayName": "Background Card",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-neutral": {
+        "role": "neutral",
+        "displayName": "Neutral",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-text-primary": {
+        "role": "neutral",
+        "displayName": "Text Primary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-text-disabled": {
+        "role": "neutral",
+        "displayName": "Text Disabled",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-border-emphasized": {
+        "role": "neutral",
+        "displayName": "Border Emphasized",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-overlay-hover": {
+        "role": "neutral",
+        "displayName": "Overlay Hover",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-overlay-pressed": {
+        "role": "neutral",
+        "displayName": "Overlay Pressed",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-background-purple": {
+        "role": "secondary",
+        "displayName": "Background Purple",
+        "tonalRamp": [
+          "oklch(15% 0.08 325)",
+          "oklch(26% 0.08 325)",
+          "oklch(38% 0.08 325)",
+          "oklch(49% 0.08 325)",
+          "oklch(61% 0.08 325)",
+          "oklch(72% 0.08 325)",
+          "oklch(84% 0.08 325)",
+          "oklch(95% 0.08 325)"
+        ]
+      },
+      "color-border-purple": {
+        "role": "secondary",
+        "displayName": "Border Purple",
+        "tonalRamp": [
+          "oklch(15% 0.08 325)",
+          "oklch(26% 0.08 325)",
+          "oklch(38% 0.08 325)",
+          "oklch(49% 0.08 325)",
+          "oklch(61% 0.08 325)",
+          "oklch(72% 0.08 325)",
+          "oklch(84% 0.08 325)",
+          "oklch(95% 0.08 325)"
+        ]
+      },
+      "color-background-orange": {
+        "role": "secondary",
+        "displayName": "Background Orange",
+        "tonalRamp": [
+          "oklch(15% 0.08 55)",
+          "oklch(26% 0.08 55)",
+          "oklch(38% 0.08 55)",
+          "oklch(49% 0.08 55)",
+          "oklch(61% 0.08 55)",
+          "oklch(72% 0.08 55)",
+          "oklch(84% 0.08 55)",
+          "oklch(95% 0.08 55)"
+        ]
+      },
+      "color-border-orange": {
+        "role": "secondary",
+        "displayName": "Border Orange",
+        "tonalRamp": [
+          "oklch(15% 0.08 55)",
+          "oklch(26% 0.08 55)",
+          "oklch(38% 0.08 55)",
+          "oklch(49% 0.08 55)",
+          "oklch(61% 0.08 55)",
+          "oklch(72% 0.08 55)",
+          "oklch(84% 0.08 55)",
+          "oklch(95% 0.08 55)"
+        ]
+      },
+      "color-background-blue": {
+        "role": "secondary",
+        "displayName": "Background Blue",
+        "tonalRamp": [
+          "oklch(15% 0.07 255)",
+          "oklch(26% 0.07 255)",
+          "oklch(38% 0.07 255)",
+          "oklch(49% 0.07 255)",
+          "oklch(61% 0.07 255)",
+          "oklch(72% 0.07 255)",
+          "oklch(84% 0.07 255)",
+          "oklch(95% 0.07 255)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Heading level 1 task titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Heading level 2 section titles."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Heading level 3 record titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Conversation and explanations."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Controls and metadata headings."
+      },
+      "supporting": {
+        "displayName": "Supporting",
+        "purpose": "Status and evidence qualifiers."
+      }
+    },
+    "shadows": [
+      {
+        "name": "field-focus-inset",
+        "value": "inset 0px 0px 0px 2px var(--color-accent-muted)",
+        "purpose": "Astryx field focus treatment; persistent cards have no elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "duration-fast",
+        "value": "125ms",
+        "purpose": "Astryx control feedback; library reduced-motion disables it."
+      },
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.24, 1, 0.4, 1)",
+        "purpose": "Astryx control state transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "navigation-overlay",
+        "value": "760px"
+      },
+      {
+        "name": "context-hidden",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Astryx primary action; preserved semantic treatment.",
+      "html": "<button class=\"ds-button-primary\">Send message</button>",
+      "css": ".ds-button-primary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-accent,#1b1b1b);color:var(--color-on-accent,#fff);}.ds-button-primary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-primary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-primary:active{transform:scale(.98);}.ds-button-primary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}.ds-button-primary:active{transform:none;}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Astryx secondary action; preserved semantic treatment.",
+      "html": "<button class=\"ds-button-secondary\">Add your sources</button>",
+      "css": ".ds-button-secondary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-neutral,#0000000f);color:var(--color-text-primary,#000);}.ds-button-secondary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-secondary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-secondary:active{transform:scale(.98);}.ds-button-secondary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none;}.ds-button-secondary:active{transform:none;}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Astryx ghost action; preserved semantic treatment.",
+      "html": "<button class=\"ds-button-ghost\">View</button>",
+      "css": ".ds-button-ghost{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:transparent;color:var(--color-text-primary,#000);}.ds-button-ghost:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-ghost:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-ghost:active{transform:scale(.98);}.ds-button-ghost:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none;}.ds-button-ghost:active{transform:none;}}"
+    },
+    {
+      "name": "Labelled Text Field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Common Astryx field wrapper treatment; keep the production component for full field behavior.",
+      "html": "<label class=\"ds-field-label\">Project name<input class=\"ds-field\" placeholder=\"Name your project\"></label>",
+      "css": ".ds-field-label{display:grid;gap:.5rem;font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;color:var(--color-text-primary,#000)}.ds-field{font:inherit;padding:.25rem .5rem;border:1px solid var(--color-border-emphasized,#d4d4d4);border-radius:var(--radius-element,.625rem);background:var(--color-background-surface,#fff);color:var(--color-text-primary,#000)}.ds-field:hover{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--color-border-emphasized,#d4d4d4) 30%,transparent)}.ds-field:focus-visible{outline:none;border-color:var(--color-accent,#1b1b1b);box-shadow:inset 0 0 0 2px var(--color-accent-muted,#d4d4d4)}"
+    },
+    {
+      "name": "Authentication Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat bordered container; used for account entry.",
+      "html": "<div class=\"ds-card\">Sign in to your workspace</div>",
+      "css": ".ds-card{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;padding:1rem;border:1px solid var(--color-border,#00000014);border-radius:var(--radius-container,.75rem);background:var(--color-background-card,#fff);color:var(--color-text-primary,#000)}"
+    },
+    {
+      "name": "Workspace Navigation",
+      "kind": "nav",
+      "description": "Current view uses secondary fill; other views use ghost buttons.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace navigation\"><button class=\"ds-nav-active\">Chat</button><button>Sources</button><button>Graph</button></nav>",
+      "css": ".ds-nav{display:grid;gap:.25rem}.ds-nav button{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:transparent;color:var(--color-text-primary,#000)}.ds-nav .ds-nav-active{background:var(--color-neutral,#0000000f)}.ds-nav button:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d))}.ds-nav button:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px}"
+    },
+    {
+      "name": "Evidence Row",
+      "kind": "custom",
+      "description": "Review status and evidence qualification stay beside the finding.",
+      "html": "<section class=\"ds-record\"><strong>Supplier integration</strong><span>decision \u00b7 pending \u00b7 v1</span><small>Evidence: ai inferred</small><p>Review the proposed responsibility and its source evidence.</p></section>",
+      "css": ".ds-record{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:grid;gap:.75rem;padding:1.25rem 0;border-bottom:1px solid var(--color-border,#00000014);color:var(--color-text-primary,#000)}.ds-record strong{font-size:1.0625rem;font-weight:700}.ds-record span,.ds-record small{font-size:.75rem;font-weight:400;color:var(--color-text-secondary,#474747)}.ds-record p{font-weight:400;margin:0}"
+    },
+    {
+      "name": "Change Driver Graph Node",
+      "kind": "custom",
+      "refersTo": "graph-node",
+      "description": "Orange highlight is accompanied by an explicit match label and heavier border.",
+      "html": "<button class=\"ds-node\">Supplier adapter \u00b7 component \u00b7 Change driver match</button>",
+      "css": ".ds-node{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;width:210px;min-height:65px;padding:10px;background:var(--color-background-orange,#ffc7a1);color:var(--color-text-primary,#000);border:2px solid var(--color-border-orange,#ffc7a1);border-radius:var(--radius-container,.75rem);font-weight:600;cursor:pointer}.ds-node:hover{filter:brightness(.98)}.ds-node:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Architecture Working Notebook",
+    "overview": "Galvanise uses the incumbent Astryx neutral identity: restrained grayscale surfaces, Figtree typography and compact controls around a spacious working column. The interface feels like a working notebook for architecture decisions, with conversation, evidence and review taking priority over decoration.\n\nThe creative north star names the implemented character; it does not introduce a replacement brand. Color is reserved for graph meaning. Labels, provenance, review states and edge styles keep claims distinguishable without implying measured certainty.",
+    "keyCharacteristics": [
+      "Neutral surfaces and dark primary actions.",
+      "Spacious conversation, compact navigation and evidence rows.",
+      "Explicit provenance, uncertainty and review actions.",
+      "Graph color reinforced by labels and line style."
+    ],
+    "rules": [
+      {
+        "name": "The Evidence Color Rule",
+        "body": "Graph color identifies a semantic category, never verification or a probability score. Retain labels and dashed versus solid edge treatment.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading Hierarchy Rule",
+        "body": "Use heading levels to structure tasks, body text for reasoning and supporting text for evidence qualifiers. Keep essential uncertainty legible rather than hiding it in color alone.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Workspace Rule",
+        "body": "Organize persistent working regions with semantic fills and dividers; reserve library elevation for transient controls that require it.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the supported Astryx components and semantic CSS properties.",
+      "Do keep evidence status, review status, version and provenance visible together.",
+      "Do provide labelled controls and a reachable composer at narrow widths.",
+      "Do preserve source confidence as an upstream claim and identify synthetic sample evidence."
+    ],
+    "donts": [
+      "Don't introduce a new brand accent or decorative chart palette.",
+      "Don't imply that repository file indexing establishes dependency relationships.",
+      "Don't present qualitative scenario assumptions as measured savings or verified impact.",
+      "Don't claim dark-mode, mobile-drawer modality or reduced-motion coverage beyond the implementation."
+    ]
+  }
+}
