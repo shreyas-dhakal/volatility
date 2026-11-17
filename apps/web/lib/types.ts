@@ -9,3 +9,12 @@ export type Document = {id:string;name:string;content?:string};
 export type GraphSummary = {id:string;name:string;node_count:number;edge_count:number};
 export type GraphNode = {id:string;label:string;type:string;file_path?:string;metadata?:Record<string,unknown>};
 export type GraphData = {id:string;name:string;nodes:GraphNode[];edges:{id:string;source:string;target:string;type:string;metadata?:Record<string,unknown>}[];summary:Record<string,unknown>};
+export type DesignStage = 'core'|'volatility'|'decomposition'|'validation';
+export type DesignFinding = {code:string;severity:string;message:string;record_ids:string[]};
+export type DesignSnapshot = {
+ use_cases:Knowledge[];core_use_cases:Knowledge[];volatilities:Knowledge[];components:Knowledge[];validations:Knowledge[];
+ findings:DesignFinding[];
+ readiness:{use_cases:boolean;core_use_cases:boolean;volatility:boolean;decomposition:boolean;validation:boolean};
+ [metadata:string]:unknown;
+};
+export type UseCaseInput = {title:string;description:string;actor:string;trigger:string;preconditions:string[];steps:string[];outcome:string;variations:string[];evidence_ids:string[]};

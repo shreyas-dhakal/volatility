@@ -4,13 +4,14 @@ import {Icon, type IconProps} from '@astryxdesign/core/Icon';
 import {MessageSquare,FolderOpen,ClipboardCheck,TrendingUp,CircleHelp,Layers,Network,Settings,BookOpen,GitBranch,Check,Clock,X} from 'lucide-react';
 import {Button,HStack,VStack,Text} from './ui';
 
-export type WorkspaceView='Chat'|'Sources'|'Decisions'|'Volatility'|'Questions'|'Designs'|'Graph'|'Settings'|'Context';
+export type WorkspaceView='Chat'|'Sources'|'Decisions'|'Volatility'|'Questions'|'Designs'|'Design process'|'Graph'|'Settings'|'Context';
 export const navigation={
  Chat:{label:'Chat',icon:MessageSquare,color:'blue'},
  Sources:{label:'Files & code',icon:FolderOpen,color:'blue'},
  Decisions:{label:'Decisions',icon:ClipboardCheck,color:'purple'},
  Volatility:{label:'Changes',icon:TrendingUp,color:'orange'},
  Questions:{label:'Questions',icon:CircleHelp,color:'orange'},
+ 'Design process':{label:'Design process',icon:GitBranch,color:'purple'},
  Designs:{label:'Designs',icon:Layers,color:'purple'},
  Graph:{label:'Code map',icon:Network,color:'teal'},
  Settings:{label:'Settings',icon:Settings,color:'gray'},

@@ -7,6 +7,7 @@ import {themes,defaultThemeSlug} from '../../../astryx-themes';
 import {VStack,HStack,Button,Text,Heading,TextInput,TextArea,Selector,FileInput,Markdown,Card} from './ui';
 import {request,post,chat,ApiError} from '../lib/api';
 import type {User,Project,Conversation,Message,Knowledge,Source,Job,Document,GraphSummary} from '../lib/types';
+import {DesignWorkspace} from './design-workspace';
 import {GraphWorkspace} from './graph';
 import {AppIcon,NavigationItem,GitHubAction,ReviewState,evidenceLabel,fieldLabel,plainValue,navigation,toolActivity,type WorkspaceView} from './workspace-ui';
 import {Plus,MessageSquare,Send,Square,RefreshCw,Menu,PanelLeftClose,BookOpen,FileText,Upload,GitBranch,LogOut,Check,X,Pencil,History,Search,ArrowRight,Info,TriangleAlert,Layers,Network,ClipboardCheck} from 'lucide-react';
@@ -38,7 +39,7 @@ const s=stylex.create({
  connection:{borderTop:'1px solid var(--color-border)'},
 });
 type View=WorkspaceView;
-const views:View[]=['Chat','Sources','Decisions','Volatility','Questions','Designs','Graph'];
+const views:View[]=['Chat','Sources','Decisions','Volatility','Questions','Design process','Designs','Graph'];
 const human=(v:string)=>v.replaceAll('_',' ');
 export default function Page(){return <Theme theme={themes[defaultThemeSlug]} mode="light"><Workspace/></Theme>}
 function Workspace(){
@@ -80,6 +81,7 @@ function Workspace(){
  <VStack padding={5} xstyle={s.composer}><VStack xstyle={s.measure} gap={3}><TextArea label="Message your architect" isLabelHidden value={draft} onChange={setDraft} placeholder="Describe a business change, ask a question, or explore a design…" rows={3}/><HStack gap={3} hAlign="between" vAlign="center"><Text xstyle={s.helper} type="supporting" color="secondary">You choose which suggestions to keep.</Text>{streaming?<Button xstyle={s.action} label="Stop" icon={<AppIcon icon={Square} color="error"/>} onClick={()=>controller.current?.abort()}/>:<Button xstyle={s.action} label="Send" icon={<AppIcon icon={Send} color="inherit"/>} variant="primary" isDisabled={!draft.trim()||!health?.ai_configured} tooltip={!health?.ai_configured?'Set up chat in Settings first':undefined} onClick={send}/>}</HStack></VStack></VStack></>:<VStack padding={6} gap={6} xstyle={s.content}>
  {view==='Sources'&&<Sources githubAvailable={!!health?.github_configured} base={base} user={user} sources={sources} documents={documents} jobs={jobs} graphs={graphs} busy={busy} run={run} refresh={refresh}/>}
  {['Decisions','Volatility','Questions'].includes(view)&&<><HStack hAlign="between" vAlign="center" wrap="wrap"><Heading level={1}>{view==='Decisions'?'Decisions':view==='Volatility'?'What might change':'Questions to answer'}</Heading><Button label="Find suggestions" icon={<AppIcon icon={Search} color={health?.ai_configured?'blue':'disabled'}/>} isDisabled={!health?.ai_configured} tooltip={!health?.ai_configured?'Set up chat in Settings first':undefined} isLoading={busy} onClick={()=>run(async()=>{await post(`${base}/analyse`);await refresh()})}/></HStack><Text color="secondary">Check each suggestion before keeping it. You can edit it or leave it out.</Text><KnowledgeList records={records.filter(r=>view==='Decisions'?['requirement','decision','driver','traceability','evidence'].includes(r.kind):view==='Volatility'?r.kind==='volatility':r.kind==='question')} busy={busy} patch={(r,c)=>run(()=>patch(r,c))} answer={(r,answer)=>run(async()=>{await post(`${base}/questions/${r.id}/answer`,{answer});await refresh()})} map={r=>run(async()=>{if(!graphs[0])throw new Error('Import a technical graph before linking a decision.');await post(`${base}/traceability`,{decision_id:r.id,graph_id:graphs[0].id});await refresh()})}/></>}
+ {view==='Design process'&&<DesignWorkspace key={base} base={base} aiAvailable={health?health.ai_configured:null} records={records} onChange={refresh} onSettings={()=>choose('Settings')}/>}
  {view==='Designs'&&<Designs aiAvailable={!!health?.ai_configured} records={records} graphs={graphs} base={base} busy={busy} run={run} refresh={refresh} patch={(r,c)=>run(()=>patch(r,c))}/>}
  {view==='Graph'&&<GraphWorkspace base={base} graphs={graphs} records={records} onError={setError}/>}
  {view==='Context'&&<VStack gap={5}><Heading level={1}>Project notes</Heading><Heading level={2}>Project goal</Heading><Text>{project.objective||'Tell us your project goal in chat.'}</Text><Context title="Decisions to review" records={records.filter(r=>r.status==='pending'&&['decision','requirement'].includes(r.kind))} open={()=>choose('Decisions')}/><Context title="Reasons for change" records={records.filter(r=>r.kind==='driver')} open={()=>choose('Volatility')}/><Context title="Questions to answer" records={records.filter(r=>r.kind==='question')} open={()=>choose('Questions')}/><Button label="Back to chat" icon={<AppIcon icon={MessageSquare} color="blue"/>} onClick={()=>choose('Chat')}/></VStack>}

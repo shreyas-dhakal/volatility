@@ -29,3 +29,7 @@ it('uses explicit review labels alongside status colors',()=>{
  rerender(<ReviewState status="approved"/>);expect(screen.getByText('Approved')).toBeTruthy();
  rerender(<ReviewState status="rejected"/>);expect(screen.getByText('Not used')).toBeTruthy();
 });
+
+it('keeps the guided process and the original Designs navigation available independently',()=>{
+ const open=vi.fn();render(<><NavigationItem view="Design process" active available onClick={open}/><NavigationItem view="Designs" active={false} available onClick={open}/></>);expect(screen.getByRole('button',{name:'Design process'}).getAttribute('aria-current')).toBe('page');expect(screen.getByRole('button',{name:'Designs'})).toBeTruthy();
+});
