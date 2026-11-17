@@ -53,7 +53,7 @@ All imported content is untrusted evidence. AI proposals begin pending; explicit
 
 ## Graphs, demo and tests
 
-See [Graphify schema and provenance](docs/architecture/graphify.md). Import a Graphify JSON export in Sources; real edges support search, focus, node details and dependency paths. Use the workspace's explicit demonstration action to create labelled synthetic business records and an actual sample graph. Demo content never pretends to be a live integration. Sample inputs are in `examples/`; seed is also available through `scripts/seed_demo.py`.
+See [Graphify schema and provenance](docs/architecture/graphify.md). Import a Graphify JSON export in Files & code; real edges support search, focus, node details and dependency paths. Use the workspace's explicit demonstration action to create labelled synthetic business records and an actual sample graph. Demo content never pretends to be a live integration. Sample inputs are in `examples/`; seed is also available through `scripts/seed_demo.py`.
 
 ```sh
 cd apps/api

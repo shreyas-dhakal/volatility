@@ -19,6 +19,6 @@ it('persists keyboard graph selection and inspects pointer-activated business ev
  render(<GraphWorkspace base="/projects/p" graphs={[{id:'g',name:'ERP',node_count:2,edge_count:0}]} records={[{id:'d',kind:'decision',title:'Supplier expansion',description:'Confirmed by purchasing lead',status:'approved',evidence_status:'human_confirmed',version:1,payload:{evidence_ids:['document-1']},history:[]}]} onError={vi.fn()}/>);
  const orders=await screen.findByRole('button',{name:/Orders, module/});fireEvent.keyDown(orders,{key:'Enter'});
  await waitFor(()=>expect(screen.getByRole('button',{name:/Orders, module/}).getAttribute('aria-pressed')).toBe('true'));
- expect(await screen.findByText('Orders implementation')).toBeTruthy();expect(await screen.findByRole('heading',{name:'Node evidence & dependencies'})).toBeTruthy();
+ expect(await screen.findByText('Orders implementation')).toBeTruthy();expect(await screen.findByRole('heading',{name:'Sources & connections'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Supplier expansion, decision/}));expect(await screen.findByText('Confirmed by purchasing lead')).toBeTruthy();expect(screen.getByText('document-1')).toBeTruthy();expect(fetcher.mock.calls.some(([url])=>url.includes('/nodes/business'))).toBe(false);
 });

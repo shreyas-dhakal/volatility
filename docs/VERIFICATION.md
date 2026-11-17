@@ -73,3 +73,11 @@ Observed checks after replacement:
 - Full backend suite now40 passed in2.42s, including a regression verifying that provider401 produces an actionable key-configuration error without exposing provider error contents. Other provider errors log exception class/status only.
 
 Live streaming is now verified; GitHub OAuth consent remains unverified. Architecture extraction/generation remain covered by mocked provider tests rather than live end-to-end checks.
+
+## Follow-up: simpler UI and colored actions
+
+User requested a cleaner UI with plain language, helpful icon colors and Astryx buttons. The completed refinement uses actual Astryx Button/Icon controls, left-aligned labelled navigation, explicit green/amber/red review states, grey unavailable actions with explanations, readable details, and named code choices instead of internal IDs. Navigation now uses Files & code, Changes, Code map and Project notes.
+
+Observed:21 frontend tests passed; Next/TypeScript production builds passed locally and in Docker; Astryx doctor had0 failures; the UI detector returned[]. Actual production browser captures at1440×1000 and390×844 were reviewed. Mobile width390 matched document width390. Fresh visual review disposition:ship at captured scope, no required fixes. Captures and review: `.impeccable/review/ui-cleanup/`, `docs/tasks/ui-cleanup-visual-review.md`.
+
+A host disk-full incident interrupted deployment and Docker storage. Only Galvanise's disposable620MB build cache was cleared. The user explicitly approved restarting the Docker engine (Colima); database volumes were preserved. A temporary host production server was stopped after Docker recovered. Final Docker web/API/database services are healthy and the real frontend-proxy smoke passes, including registration, saving, uploads, graph import, reviews and persistent recovery. The updated app remains at http://localhost:3002.

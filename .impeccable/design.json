@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-17T08:02:09.381908+00:00",
+  "generatedAt": "2026-11-17T08:38:19.721822+00:00",
   "title": "Design System: Galvanise",
   "extensions": {
     "colorMeta": {
@@ -269,6 +269,132 @@
           "oklch(84% 0.07 255)",
           "oklch(95% 0.07 255)"
         ]
+      },
+      "color-icon-blue": {
+        "role": "secondary",
+        "displayName": "Icon Blue",
+        "tonalRamp": [
+          "oklch(15% 0.07 255)",
+          "oklch(26% 0.07 255)",
+          "oklch(38% 0.07 255)",
+          "oklch(49% 0.07 255)",
+          "oklch(61% 0.07 255)",
+          "oklch(72% 0.07 255)",
+          "oklch(84% 0.07 255)",
+          "oklch(95% 0.07 255)"
+        ]
+      },
+      "color-icon-purple": {
+        "role": "secondary",
+        "displayName": "Icon Purple",
+        "tonalRamp": [
+          "oklch(15% 0.08 325)",
+          "oklch(26% 0.08 325)",
+          "oklch(38% 0.08 325)",
+          "oklch(49% 0.08 325)",
+          "oklch(61% 0.08 325)",
+          "oklch(72% 0.08 325)",
+          "oklch(84% 0.08 325)",
+          "oklch(95% 0.08 325)"
+        ]
+      },
+      "color-icon-orange": {
+        "role": "secondary",
+        "displayName": "Icon Orange",
+        "tonalRamp": [
+          "oklch(15% 0.08 55)",
+          "oklch(26% 0.08 55)",
+          "oklch(38% 0.08 55)",
+          "oklch(49% 0.08 55)",
+          "oklch(61% 0.08 55)",
+          "oklch(72% 0.08 55)",
+          "oklch(84% 0.08 55)",
+          "oklch(95% 0.08 55)"
+        ]
+      },
+      "color-icon-teal": {
+        "role": "secondary",
+        "displayName": "Icon Teal",
+        "tonalRamp": [
+          "oklch(15% 0.07 175)",
+          "oklch(26% 0.07 175)",
+          "oklch(38% 0.07 175)",
+          "oklch(49% 0.07 175)",
+          "oklch(61% 0.07 175)",
+          "oklch(72% 0.07 175)",
+          "oklch(84% 0.07 175)",
+          "oklch(95% 0.07 175)"
+        ]
+      },
+      "color-icon-gray": {
+        "role": "neutral",
+        "displayName": "Icon Gray",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-icon-disabled": {
+        "role": "neutral",
+        "displayName": "Icon Disabled",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "color-text-success": {
+        "role": "secondary",
+        "displayName": "Text Success",
+        "tonalRamp": [
+          "oklch(15% 0.08 145)",
+          "oklch(26% 0.08 145)",
+          "oklch(38% 0.08 145)",
+          "oklch(49% 0.08 145)",
+          "oklch(61% 0.08 145)",
+          "oklch(72% 0.08 145)",
+          "oklch(84% 0.08 145)",
+          "oklch(95% 0.08 145)"
+        ]
+      },
+      "color-text-warning": {
+        "role": "secondary",
+        "displayName": "Text Warning",
+        "tonalRamp": [
+          "oklch(15% 0.08 85)",
+          "oklch(26% 0.08 85)",
+          "oklch(38% 0.08 85)",
+          "oklch(49% 0.08 85)",
+          "oklch(61% 0.08 85)",
+          "oklch(72% 0.08 85)",
+          "oklch(84% 0.08 85)",
+          "oklch(95% 0.08 85)"
+        ]
+      },
+      "color-text-error": {
+        "role": "secondary",
+        "displayName": "Text Error",
+        "tonalRamp": [
+          "oklch(15% 0.08 25)",
+          "oklch(26% 0.08 25)",
+          "oklch(38% 0.08 25)",
+          "oklch(49% 0.08 25)",
+          "oklch(61% 0.08 25)",
+          "oklch(72% 0.08 25)",
+          "oklch(84% 0.08 25)",
+          "oklch(95% 0.08 25)"
+        ]
       }
     },
     "typographyMeta": {
@@ -333,16 +459,16 @@
       "kind": "button",
       "refersTo": "button-primary",
       "description": "Astryx primary action; preserved semantic treatment.",
-      "html": "<button class=\"ds-button-primary\">Send message</button>",
-      "css": ".ds-button-primary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-accent,#1b1b1b);color:var(--color-on-accent,#fff);}.ds-button-primary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-primary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-primary:active{transform:scale(.98);}.ds-button-primary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}.ds-button-primary:active{transform:none;}}"
+      "html": "<button class=\"ds-button-primary\"><svg class=\"ds-button-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m22 2-7 20-4-9-9-4Z\"/><path d=\"M22 2 11 13\"/></svg>Send</button>",
+      "css": ".ds-button-primary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-accent,#1b1b1b);color:var(--color-on-accent,#fff);}.ds-button-primary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-primary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-primary:active{transform:scale(.98);}.ds-button-primary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}.ds-button-primary:active{transform:none;}} .ds-button-primary{gap:.5rem}.ds-button-icon{flex-shrink:0}"
     },
     {
       "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
       "description": "Astryx secondary action; preserved semantic treatment.",
-      "html": "<button class=\"ds-button-secondary\">Add your sources</button>",
-      "css": ".ds-button-secondary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-neutral,#0000000f);color:var(--color-text-primary,#000);}.ds-button-secondary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-secondary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-secondary:active{transform:scale(.98);}.ds-button-secondary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none;}.ds-button-secondary:active{transform:none;}}"
+      "html": "<button class=\"ds-button-secondary\"><svg class=\"ds-button-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z\"/></svg>Files &amp; code</button>",
+      "css": ".ds-button-secondary{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:var(--color-neutral,#0000000f);color:var(--color-text-primary,#000);}.ds-button-secondary:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d));}.ds-button-secondary:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px;}.ds-button-secondary:active{transform:scale(.98);}.ds-button-secondary:disabled{opacity:.5;cursor:default;transform:none;}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none;}.ds-button-secondary:active{transform:none;}} .ds-button-secondary{gap:.5rem}.ds-button-icon{flex-shrink:0;color:var(--color-icon-blue,#003978)}"
     },
     {
       "name": "Ghost Button",
@@ -372,15 +498,15 @@
       "name": "Workspace Navigation",
       "kind": "nav",
       "description": "Current view uses secondary fill; other views use ghost buttons.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace navigation\"><button class=\"ds-nav-active\">Chat</button><button>Sources</button><button>Graph</button></nav>",
-      "css": ".ds-nav{display:grid;gap:.25rem}.ds-nav button{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:transparent;color:var(--color-text-primary,#000)}.ds-nav .ds-nav-active{background:var(--color-neutral,#0000000f)}.ds-nav button:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d))}.ds-nav button:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px}"
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace navigation\"><button class=\"ds-nav-active\" aria-current=\"page\"><svg class=\"ds-nav-blue\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z\"/></svg>Chat</button><button><svg class=\"ds-nav-blue\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z\"/></svg>Files &amp; code</button><button><svg class=\"ds-nav-purple\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m20 6-11 11-5-5\"/></svg>Decisions</button></nav>",
+      "css": ".ds-nav{display:grid;gap:.25rem}.ds-nav button{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:inline-flex;align-items:center;justify-content:center;padding:.5rem .75rem;min-width:0;height:32px;border:0;border-radius:var(--radius-element,.625rem);cursor:pointer;transition:background-color var(--duration-fast,125ms) var(--ease-standard,cubic-bezier(.24,1,.4,1)),transform 125ms;background:transparent;color:var(--color-text-primary,#000)}.ds-nav .ds-nav-active{background:var(--color-neutral,#0000000f)}.ds-nav button:hover{background-image:linear-gradient(var(--color-overlay-hover,#0000000d),var(--color-overlay-hover,#0000000d))}.ds-nav button:focus-visible{outline:2px solid var(--color-accent,#1b1b1b);outline-offset:3px}.ds-nav button{justify-content:flex-start;gap:.5rem}.ds-nav-blue{color:var(--color-icon-blue,#003978);flex-shrink:0}.ds-nav-purple{color:var(--color-icon-purple,#5c0e6c);flex-shrink:0}"
     },
     {
       "name": "Evidence Row",
       "kind": "custom",
-      "description": "Review status and evidence qualification stay beside the finding.",
-      "html": "<section class=\"ds-record\"><strong>Supplier integration</strong><span>decision \u00b7 pending \u00b7 v1</span><small>Evidence: ai inferred</small><p>Review the proposed responsibility and its source evidence.</p></section>",
-      "css": ".ds-record{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:grid;gap:.75rem;padding:1.25rem 0;border-bottom:1px solid var(--color-border,#00000014);color:var(--color-text-primary,#000)}.ds-record strong{font-size:1.0625rem;font-weight:700}.ds-record span,.ds-record small{font-size:.75rem;font-weight:400;color:var(--color-text-secondary,#474747)}.ds-record p{font-weight:400;margin:0}"
+      "description": "Readable review and evidence labels; source details and history are available on demand.",
+      "html": "<section class=\"ds-record\"><strong>Supplier integration</strong><span class=\"ds-review\"><svg class=\"ds-review-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 6v6l4 2\"/></svg>Needs review</span><small>AI suggestion</small><p>Review which part should handle this and check its sources.</p></section>",
+      "css": ".ds-record{font-family:var(--font-family-body,Figtree,Arial,sans-serif);font-size:var(--text-label-size,.875rem);font-weight:500;line-height:1.4286;display:grid;gap:.75rem;padding:1.25rem 0;border-bottom:1px solid var(--color-border,#00000014);color:var(--color-text-primary,#000)}.ds-record strong{font-size:1.0625rem;font-weight:700}.ds-record span,.ds-record small{font-size:.75rem;font-weight:400;color:var(--color-text-secondary,#474747)}.ds-record p{font-weight:400;margin:0}.ds-review{display:flex;align-items:center;gap:.5rem}.ds-review-icon{color:var(--color-icon-warning,var(--color-text-warning,#836700));flex-shrink:0}"
     },
     {
       "name": "Change Driver Graph Node",
@@ -393,12 +519,12 @@
   ],
   "narrative": {
     "northStar": "The Architecture Working Notebook",
-    "overview": "Galvanise uses the incumbent Astryx neutral identity: restrained grayscale surfaces, Figtree typography and compact controls around a spacious working column. The interface feels like a working notebook for architecture decisions, with conversation, evidence and review taking priority over decoration.\n\nThe creative north star names the implemented character; it does not introduce a replacement brand. Color is reserved for graph meaning. Labels, provenance, review states and edge styles keep claims distinguishable without implying measured certainty.",
+    "overview": "Galvanise uses the incumbent Astryx neutral identity: restrained grayscale surfaces, Figtree typography and compact controls around a spacious working column. The interface feels like a working notebook for architecture decisions, with conversation, evidence and review taking priority over decoration.\n\nThe creative north star names the implemented character; it does not introduce a replacement brand. Color is used for navigation/action icons, review states and graph meaning. Labels, provenance, review states and edge styles keep claims distinguishable without implying measured certainty.",
     "keyCharacteristics": [
       "Neutral surfaces and dark primary actions.",
       "Spacious conversation, compact navigation and evidence rows.",
       "Explicit provenance, uncertainty and review actions.",
-      "Graph color reinforced by labels and line style."
+      "Colored icons and graph annotations reinforced by labels and line style."
     ],
     "rules": [
       {
@@ -419,12 +545,13 @@
     ],
     "dos": [
       "Do use the supported Astryx components and semantic CSS properties.",
-      "Do keep evidence status, review status, version and provenance visible together.",
+      "Do show readable evidence and review labels beside findings, with source details and previous versions available on demand.",
       "Do provide labelled controls and a reachable composer at narrow widths.",
       "Do preserve source confidence as an upstream claim and identify synthetic sample evidence."
     ],
     "donts": [
       "Don't introduce a new brand accent or decorative chart palette.",
+      "Don't expose raw JSON, manual node IDs or internal field names as the normal review workflow.",
       "Don't imply that repository file indexing establishes dependency relationships.",
       "Don't present qualitative scenario assumptions as measured savings or verified impact.",
       "Don't claim dark-mode, mobile-drawer modality or reduced-motion coverage beyond the implementation."
