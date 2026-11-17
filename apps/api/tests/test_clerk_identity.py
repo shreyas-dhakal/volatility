@@ -334,3 +334,42 @@ def test_malformed_argon_hash_is_blocked_in_preflight():
         )
         db.commit()
         assert clerk_import.import_users(db, None, apply=False)["blocked"] == 1
+
+
+def test_cutover_dry_run_preserves_sessions_and_apply_keeps_source_credentials():
+    from datetime import timedelta
+    from galvanise.models import Session as AuthSession, now
+    from galvanise import clerk_cutover
+
+    with SessionLocal() as db:
+        user = User(name="A", email="a@example.com")
+        db.add(user)
+        db.flush()
+        db.add_all(
+            [
+                AuthSession(
+                    user_id=user.id,
+                    token_hash="synthetic-hash",
+                    expires_at=now() + timedelta(days=1),
+                ),
+                Account(
+                    user_id=user.id,
+                    github_id="1",
+                    token_ciphertext=encrypt("synthetic-source"),
+                ),
+            ]
+        )
+        db.commit()
+        assert clerk_cutover.invalidate_legacy_sessions(db) == {
+            "legacy_sessions": 1,
+            "invalidated": 0,
+        }
+        assert db.scalar(select(AuthSession)) is not None
+        assert clerk_cutover.invalidate_legacy_sessions(db, apply=True) == {
+            "legacy_sessions": 1,
+            "invalidated": 1,
+        }
+        assert db.scalar(select(AuthSession)) is None
+        assert (
+            decrypt(db.scalar(select(Account)).token_ciphertext) == "synthetic-source"
+        )

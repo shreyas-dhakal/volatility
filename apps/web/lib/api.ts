@@ -2,7 +2,7 @@ export class ApiError extends Error { constructor(public status: number, message
 type TokenGetter = () => Promise<string | null>;
 let tokenGetter: TokenGetter | undefined;
 export function configureTokenGetter(getter: TokenGetter | undefined) { tokenGetter = getter; }
-async function authorizationHeaders() {
+async function authorizationHeaders(): Promise<Record<string,string>> {
   const getter = tokenGetter;
   if (!getter) return {};
   const token = await getter();
