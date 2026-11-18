@@ -20,7 +20,7 @@ def command(content):
         text,
     ):
         return "plan_project"
-    if re.match(
+    if "?" not in content and re.match(
         r"^(?:correction\s*:|apply (?:this |the )?correction\b|(?:update|revise|correct|change) (?:the |this |my )?(?:design|architecture|assumption|contract)\b)",
         text,
     ):

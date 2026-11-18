@@ -17,6 +17,7 @@ def test_only_explicit_design_commands_authorize_mutations():
     assert command("Plan project") == "plan_project"
     assert command("Correction: every site uses one tariff") == "revise_design"
     assert command("What if we change the design to use one tariff?") is None
+    assert command("Change the design to use one tariff?") is None
     assert command("All sites will use one tariff") is None
 
 
