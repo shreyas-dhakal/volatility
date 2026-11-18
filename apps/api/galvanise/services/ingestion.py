@@ -390,6 +390,7 @@ def process_next_job():
         )
         if not job:
             return False
+        job_id = job.id
         job.status = "running"
         db.commit()
         try:
@@ -424,13 +425,26 @@ def process_next_job():
                 job.payload = {**job.payload, "document_ids": document_ids}
             elif job.kind == "github":
                 ingest_repository(db, job)
+                # Deleting the import revokes its job. Lock the job before
+                # flushing staged files so deletion and publication serialize.
+                with db.no_autoflush:
+                    active = db.scalar(
+                        select(IngestionJob.id)
+                        .where(IngestionJob.id == job_id)
+                        .with_for_update()
+                    )
+                if active is None:
+                    db.rollback()
+                    return True
             else:
                 raise ValueError("Unsupported job kind")
             job.status = "completed"
             job.error = None
         except Exception as error:
             db.rollback()
-            job = db.get(IngestionJob, job.id)
+            job = db.get(IngestionJob, job_id, with_for_update=True)
+            if job is None:
+                return True
             job.status = "failed"
             job.error = "Ingestion failed. Check file format, extraction limits, or GitHub connection."
             if isinstance(error, (ValueError, UnicodeDecodeError, zipfile.BadZipFile)):

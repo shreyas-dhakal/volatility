@@ -49,6 +49,8 @@ For a workspace that uses Clerk sign-in, configure Clerk and start with `./scrip
 
 Galvanise reads source code as text. It accepts individual code files, ZIP projects, Markdown, plain text, PDFs with selectable text, and Word files in DOCX format. The default upload limit is 10 MiB per file. For a scanned PDF, extract the text first. You can also connect a public GitHub repository or import a Graphify file under **Files & code**. [Graphify import guide](docs/architecture/graphify.md)
 
+To remove an imported repository, open **Files & code**, choose **Delete from project** beside its name, and confirm. This removes the project’s imported files and code map. Saved design revisions keep their cited excerpts. The original repository stays on GitHub.
+
 AI analysis sends relevant project text to OpenAI. Use material you are authorized to share and remove passwords and keys before uploading. A citation lets you check what a source actually says. The proposed design and its predictions still need your judgment.
 
 ## For contributors

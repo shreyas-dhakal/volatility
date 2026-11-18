@@ -31,3 +31,34 @@ describe('guided design navigation',()=>{
  });vi.stubGlobal('fetch',fetcher);render(<Page/>);await screen.findByRole('button',{name:'Design process'});fireEvent.click(screen.getByRole('button',{name:'Design process'}));await screen.findByRole('heading',{name:'Gather detailed use cases'});expect(fetcher.mock.calls.some(([url])=>url==='/api/projects/p/design')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Designs'}));expect(await screen.findByRole('heading',{name:'Design options'})).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Files & code'}));expect(await screen.findByRole('heading',{name:'Files & code'})).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Chat'}));expect(await screen.findByRole('heading',{name:'What is changing in your business?'})).toBeTruthy();
  });
 });
+
+it('asks before removing a connected repository and refreshes the file list',async()=>{
+  const {default:Page}=await import('./workspace');
+  const project={id:'p',name:'Parking',system_type:'existing',description:'',objective:''};
+  let connected=true;
+  const fetcher=vi.fn(async(url:string, init?:RequestInit)=>{
+    let body:unknown=[];
+    if(url==='/api/auth/me')body={id:'u',name:'Alex',github_connected:false};
+    if(url==='/api/projects')body=[project];
+    if(url.endsWith('/sources'))body=connected?[{id:'s',name:'org/parking',kind:'github',status:'ready'}]:[];
+    if(url.endsWith('/documents'))body=connected?[{id:'d',name:'gate.py',source_id:'s'}]:[];
+    if(url==='/api/projects/p/sources/github/s'&&init?.method==='DELETE'){
+      connected=false;
+      return new Response(null,{status:204});
+    }
+    return new Response(JSON.stringify(body));
+  });
+  vi.stubGlobal('fetch',fetcher);
+  render(<Page/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Files & code'}));
+  const remove=()=>screen.getByRole('button',{name:'Delete org/parking from project'});
+  await screen.findByText('gate.py');
+  fireEvent.click(remove());
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(connected).toBe(true);
+  fireEvent.click(remove());
+  fireEvent.click(screen.getByRole('button',{name:'Confirm removal'}));
+  await waitFor(()=>expect(screen.queryByText('gate.py')).toBeNull());
+  expect(connected).toBe(false);
+  expect(screen.queryByRole('button',{name:'Delete org/parking from project'})).toBeNull();
+});

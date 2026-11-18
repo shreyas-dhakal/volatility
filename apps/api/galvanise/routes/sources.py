@@ -1,17 +1,24 @@
 import base64
 from pathlib import PurePosixPath
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from galvanise.config import settings
 from galvanise.database import get_db
 from galvanise.dependencies import get_current_user, require_project
 from galvanise.integrations.github import account_token, repositories
-from galvanise.models import ConnectedSource, IngestionJob, SourceDocument, User
+from galvanise.models import (
+    ConnectedSource,
+    IngestionJob,
+    SourceDocument,
+    TechnicalGraph,
+    User,
+)
 from galvanise.security import encrypt
 from galvanise.services.ingestion import ALLOWED, relative_path
 
@@ -47,6 +54,39 @@ def sources(
             select(ConnectedSource).where(ConnectedSource.project_id == project_id)
         )
     )
+
+
+@router.delete("/sources/github/{source_id}", status_code=204)
+def delete_repository(
+    project_id: str,
+    source_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    require_project(project_id, db, user)
+    repository = (
+        ConnectedSource.project_id == project_id,
+        ConnectedSource.id == source_id,
+        ConnectedSource.kind == "github",
+    )
+    if db.scalar(select(ConnectedSource.id).where(*repository)) is None:
+        raise HTTPException(404, "Repository not found")
+
+    db.execute(
+        delete(IngestionJob).where(
+            IngestionJob.project_id == project_id,
+            IngestionJob.kind == "github",
+            IngestionJob.payload["source_id"].as_string() == source_id,
+        )
+    )
+    for model in (SourceDocument, TechnicalGraph):
+        db.execute(
+            delete(model).where(
+                model.project_id == project_id, model.source_id == source_id
+            )
+        )
+    db.execute(delete(ConnectedSource).where(*repository))
+    db.commit()
 
 
 @router.post("/documents")
