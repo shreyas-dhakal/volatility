@@ -7,7 +7,7 @@ import re
 from pathlib import PurePosixPath
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -28,9 +28,12 @@ from galvanise.services.ingestion import TEXT_EXTENSIONS, redact
 
 def insert_once(db, model, values, keys):
     insert = sqlite_insert if db.get_bind().dialect.name == "sqlite" else pg_insert
-    return db.execute(
+    statement = (
         insert(model).values(**values).on_conflict_do_nothing(index_elements=keys)
     )
+    # Drivers can report an unknown rowcount for ON CONFLICT. RETURNING tells
+    # us whether this transaction actually created the parent before adding chunks.
+    return db.scalar(statement.returning(literal(True))) is True
 
 
 def scoped(db, model, project_id):
@@ -141,8 +144,7 @@ def store(
         "message_id": message_id,
     }
     keys = ["project_id", "origin", "content_hash"]
-    result = insert_once(db, DesignSource, values, keys)
-    if result.rowcount == 0:
+    if not insert_once(db, DesignSource, values, keys):
         return db.scalar(
             select(DesignSource.id).where(
                 DesignSource.project_id == project_id,
