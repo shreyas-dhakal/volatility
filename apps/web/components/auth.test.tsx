@@ -66,6 +66,7 @@ it('offers connected repositories before a project exists and imports only the s
    if(url==='/api/auth/me')body={id:'u',name:'Alex',github_connected:true};
    if(url==='/api/auth/github/repos')body=[{full_name:project.name,private:true,project_id:project.id}];
    if(url==='/api/projects')body=opened?[project]:[];
+   if(url==='/api/projects/p/sources')body=[{id:'s',name:project.name,kind:'github',status:'pending'}];
    if(url==='/api/projects/github'){
      expect(JSON.parse(String(init?.body))).toEqual({full_name:project.name});
      opened=true;body=project;
@@ -78,7 +79,8 @@ it('offers connected repositories before a project exists and imports only the s
  const repository=await screen.findByRole('option',{name:/owner\/private/});
  expect(opened).toBe(false);
  fireEvent.click(repository);
- await screen.findByRole('heading',{name:'What is changing in your business?'});
+ await screen.findByRole('heading',{name:'Code map'});
+ await screen.findByText('Indexing repository files…');
  expect(opened).toBe(true);
 });
 

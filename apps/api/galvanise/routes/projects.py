@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from galvanise.database import get_db
 from galvanise.dependencies import get_current_user, require_project
 from galvanise.integrations.github import accessible_repo, project_id_for_repo
-from galvanise.routes.sources import Repo, queue_repository
-from galvanise.models import Conversation, Message, Project, User
+from galvanise.routes.sources import Repo, queue_repository, retry_repository
+from galvanise.models import ConnectedSource, Conversation, Message, Project, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -57,7 +57,18 @@ def open_repository(
     project_id = project_id_for_repo(user, repo["id"])
     project = db.get(Project, project_id)
     if project:
-        return require_project(project_id, db, user)
+        require_project(project_id, db, user)
+        empty_source = db.scalar(
+            select(ConnectedSource.id).where(
+                ConnectedSource.project_id == project_id,
+                ConnectedSource.kind == "github",
+                ConnectedSource.status == "empty",
+                ConnectedSource.name == repo["full_name"],
+            )
+        )
+        if empty_source:
+            retry_repository(project_id, empty_source, db, user)
+        return project
     project = Project(
         id=project_id,
         user_id=user.id,

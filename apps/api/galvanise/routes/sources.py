@@ -39,7 +39,13 @@ def public_job(job):
                 "updated_at",
             )
         }
-        | {"source_id": job.payload.get("source_id")}
+        | {
+            "source_id": job.payload.get("source_id"),
+            "archive": job.payload.get("name")
+            if job.payload.get("name", "").lower().endswith(".zip")
+            else None,
+            "upload_id": job.payload.get("upload_id"),
+        }
     )
 
 

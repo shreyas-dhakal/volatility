@@ -266,6 +266,12 @@ def ingest_repository(db, job):
             {"recursive": "1"},
         )
     except EmptyRepository:
+        tree = {"tree": []}
+    if tree.get("truncated"):
+        raise ValueError(
+            "Repository tree is too large; import a focused Graphify export"
+        )
+    if not tree["tree"]:
         source.status = "empty"
         source.metadata_json = {
             "full_name": repo,
@@ -273,10 +279,6 @@ def ingest_repository(db, job):
             "indexed_text_files": 0,
         }
         return
-    if tree.get("truncated"):
-        raise ValueError(
-            "Repository tree is too large; import a focused Graphify export"
-        )
     entries = [e for e in tree.get("tree", []) if e.get("type") == "blob"]
     if len(entries) > 3000:
         raise ValueError("Repository exceeds 3000 files")
@@ -391,6 +393,11 @@ def ingest_repository(db, job):
         "skipped": skipped,
         "dependencies_inferred": False,
     }
+    db.add(
+        IngestionJob(
+            project_id=job.project_id, kind="graphify", payload={"source_id": source.id}
+        )
+    )
 
 
 def recover_jobs():
@@ -447,6 +454,14 @@ def process_next_job():
                     db.flush()
                     document_ids.append(doc.id)
                 job.payload = {**job.payload, "document_ids": document_ids}
+                if job.payload["name"].lower().endswith(".zip"):
+                    db.add(
+                        IngestionJob(
+                            project_id=job.project_id,
+                            kind="graphify",
+                            payload={"upload_id": job.id, "name": job.payload["name"]},
+                        )
+                    )
             elif job.kind in ("github", "graphify"):
                 if job.kind == "graphify":
                     build_repository_graph(db, job)

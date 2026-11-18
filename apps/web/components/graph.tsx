@@ -1,9 +1,9 @@
 'use client';
 import {displayText} from '../lib/text';
-import {useCallback,useEffect,useMemo,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlow,Background,Controls,MiniMap,useNodesState,type NodeProps,type OnSelectionChangeParams} from '@xyflow/react';
 import * as stylex from '@stylexjs/stylex';
-import {VStack,HStack,Heading,Text,TextInput,Selector,Button,Markdown} from './ui';
+import {VStack,HStack,Heading,Text,TextInput,Selector,Button,FileInput,Markdown} from './ui';
 import {request} from '../lib/api';
 import {adaptGraph,localNodeDetail} from '../lib/graph-view';
 import {AppIcon,fieldLabel,plainValue} from './workspace-ui';
@@ -20,27 +20,52 @@ function DetailFields({value}:{value:unknown}){
 }
 type GraphWorkspaceProps = {
  base:string; graphs:GraphSummary[]; records:Knowledge[]; onError:(s:string)=>void;
- repositories?:Source[]; jobs?:Job[]; busy?:boolean; build?:(id:string)=>Promise<void>; openSources?:()=>void;
+ repositories?:Source[]; jobs?:Job[]; busy?:boolean; build?:(id:string)=>Promise<void>; openSources?:()=>void; uploadZip?:(file:File)=>Promise<string>;
 };
 
-export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositories=[],jobs=[],busy,build,openSources}:GraphWorkspaceProps){
+export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositories=[],jobs=[],busy,build,openSources,uploadZip}:GraphWorkspaceProps){
+ const [archive,setArchive]=useState<File|null>(null);
+ const [uploading,setUploading]=useState(false);
+ const [pendingUpload,setPendingUpload]=useState('');
+ async function uploadArchive(){
+   if(!archive||!uploadZip||uploading)return;
+   setUploading(true);
+   try{setPendingUpload(await uploadZip(archive));setArchive(null)}
+   catch(e){onError((e as Error).message)}
+   finally{setUploading(false)}
+ }
+ const archiveInput=!repositories.length && uploadZip && <VStack gap={2}>
+   <FileInput label="Repository ZIP" description="Upload your local source files, including uncommitted changes." accept=".zip" value={archive} onChange={value=>setArchive(Array.isArray(value)?value[0]??null:value)}/>
+   <Button label="Upload ZIP and build code map" isDisabled={!archive||busy||uploading} isLoading={uploading} onClick={uploadArchive}/>
+   {jobs.filter(j=>j.archive && j.status!=='completed').map(j=><Text key={j.id} role="status">{j.archive} · {j.status==='failed'?j.error:j.kind==='graphify'?'Building code map…':'Reading ZIP…'}</Text>)}
+ </VStack>;
  const graphs=allGraphs.filter(g=>!(g.metadata?.provenance==='GitHub tree API' && g.metadata.dependencies_inferred===false));
  const unbuilt=repositories.filter(repo=>!graphs.some(g=>g.source_id===repo.id && g.metadata?.generator==='graphify'));
+ // Repositories indexed before automatic builds can already have a saved file index.
+ const requested=useRef(new Set<string>());
+ useEffect(()=>{
+   if(!build || busy)return;
+   const legacy=unbuilt.find(repo=>repo.status==='ready' && !requested.current.has(repo.id)
+     && !jobs.some(job=>job.kind==='graphify' && job.source_id===repo.id));
+   if(legacy){requested.current.add(legacy.id);void build(legacy.id)}
+ },[unbuilt,jobs,busy,build]);
  const buildControls=unbuilt.map(repo=>{
    const job=jobs.filter(j=>j.kind==='graphify' && j.source_id===repo.id).at(-1);
    const building=job?.status==='queued'||job?.status==='running';
-   if(repo.status==='empty')return <VStack key={repo.id} gap={2}><Text weight="semibold">{repo.name}</Text>
-     <Text color="secondary">This repository has no commits yet. After the first commit, choose Check for commits in Files &amp; code.</Text>
-     <Button label="Open Files & code" onClick={openSources}/></VStack>;
+   if(repo.status==='empty')return <VStack key={repo.id} gap={2}><Text weight="semibold">{repo.name}</Text><Text>This repository is empty.</Text></VStack>;
    const indexing=repo.status!=='ready' && repo.status!=='failed';
    return <VStack key={repo.id} gap={2}>
      <Text weight="semibold">{repo.name}</Text>
-     <Text color="secondary">{building?'Graphify is building your code map.':indexing?'Indexing repository files…':repo.status==='failed'?'Repository indexing failed. Check Files & code.':job?.status==='failed'?job.error:'The code map hasn’t been built yet.'}</Text>
-     <Button label={job?.status==='failed'?'Retry build':'Build code map'} isLoading={building}
-       isDisabled={busy||building||repo.status!=='ready'} onClick={()=>build?.(repo.id)}/>
+     <Text color="secondary">{building?'Graphify is building your code map.':indexing?'Indexing repository files…':repo.status==='failed'?'Repository indexing failed. Check Files & code.':job?.status==='failed'?job.error:'Preparing your code map…'}</Text>
+     {job?.status==='failed' && <Button label="Retry Graphify build" isDisabled={busy} onClick={()=>build?.(repo.id)}/>}
    </VStack>;
  });
  const [id,setId]=useState(''),[query,setQuery]=useState(''),[focus,setFocus]=useState(''),[driver,setDriver]=useState(''),[candidate,setCandidate]=useState(''),[data,setData]=useState<GraphData|null>(null),[detail,setDetail]=useState<unknown>(null),[technicalDetail,setTechnicalDetail]=useState(false),[loading,setLoading]=useState(false),[source,setSource]=useState(''),[target,setTarget]=useState(''),[paths,setPaths]=useState<unknown>(null);
+ useEffect(()=>{
+   if(!pendingUpload)return;
+   const result=allGraphs.find(g=>g.metadata?.upload_id===pendingUpload);
+   if(result){setId(result.id);setPendingUpload('')}
+ },[pendingUpload,allGraphs]);
  const currentGraph=graphs.find(g=>g.id===id)||graphs[0];
  const selected=currentGraph?.id||'';
  async function download(){
@@ -60,13 +85,15 @@ export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositori
  const inspect=useCallback(async(nodeId:string)=>{if(!data)return;const local=localNodeDetail(nodeId,data,records);if(local){setTechnicalDetail(false);setDetail(local);return}try{setDetail(await request(`${base}/graphs/${selected}/nodes/${encodeURIComponent(nodeId)}`));setTechnicalDetail(true);setFocus(nodeId)}catch(e){onError((e as Error).message)}},[data,records,base,selected,onError]);
  const onSelection=useCallback(({nodes}:OnSelectionChangeParams)=>{if(nodes[0])void inspect(nodes[0].id)},[inspect]);
  if(!graphs.length)return <VStack gap={4}><Heading level={1}>Code map</Heading>
+   {archiveInput}
    {buildControls}
-   {!repositories.length && <><Text color="secondary">{busy?'Loading project…':'Add a GitHub repository to build a code map, or import a Graphify JSON file.'}</Text>
+   {!repositories.length && <><Text color="secondary">{busy?'Loading project…':'You can also connect GitHub or import a Graphify JSON file in Files & code.'}</Text>
      {!busy && <Button label="Open Files & code" onClick={openSources}/>}</>}
  </VStack>;
  return <VStack gap={5}>
  <Heading level={1}>Code map</Heading>
  <Text color="secondary" xstyle={s.measure}>See how your code connects. Select a part to view its details and sources.</Text>
+ {archiveInput}
  {buildControls}
  {currentGraph?.metadata?.generator==='graphify' && <VStack gap={2}>
    <Text type="supporting" color="secondary">Built from the indexed snapshot{currentGraph.metadata.indexed_text_files!=null?` · ${currentGraph.metadata.indexed_text_files} files indexed`:''}{currentGraph.metadata.skipped_files?` · ${currentGraph.metadata.skipped_files} files skipped during indexing`:''}</Text>

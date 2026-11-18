@@ -15,7 +15,7 @@ export const navigation={
  Questions:{label:'Questions',icon:CircleHelp,color:'orange'},
  'Design process':{label:'Design process',icon:GitBranch,color:'purple'},
  Designs:{label:'Designs',icon:Layers,color:'purple'},
- Graph:{label:'Code map',icon:Network,color:'teal'},
+ Graph:{label:'Code map (Graphify)',icon:Network,color:'teal'},
  Settings:{label:'Settings',icon:Settings,color:'gray'},
  Context:{label:'Project notes',icon:BookOpen,color:'blue'},
 } as const;

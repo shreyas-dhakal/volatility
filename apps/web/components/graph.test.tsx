@@ -22,14 +22,14 @@ it('persists keyboard graph selection and inspects pointer-activated business ev
  expect(await screen.findByText('Orders implementation')).toBeTruthy();expect(await screen.findByRole('heading',{name:'Sources & connections'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Supplier expansion, decision/}));expect(await screen.findByText('Confirmed by purchasing lead')).toBeTruthy();expect(screen.getByText('document-1')).toBeTruthy();expect(fetcher.mock.calls.some(([url])=>url.includes('/nodes/business'))).toBe(false);
 });
-it('offers a build for a legacy file index and loads the saved map on return',async()=>{
+it('automatically builds a legacy file index and loads the saved map on return',async()=>{
  const build=vi.fn();
  const fetcher=vi.fn(async()=>new Response(JSON.stringify({nodes:[],edges:[],summary:{}})));
  vi.stubGlobal('fetch',fetcher);
  const props={base:'/projects/p',repositories:[{id:'s',name:'shop/cart',kind:'github',status:'ready'}],records:[],onError:vi.fn(),build};
  const index={id:'index',name:'file index',node_count:2,edge_count:0,source_id:'s',metadata:{provenance:'GitHub tree API',dependencies_inferred:false}};
  const view=render(<GraphWorkspace {...props} graphs={[index]}/>);
- fireEvent.click(screen.getByRole('button',{name:'Build code map'}));
+
  expect(build).toHaveBeenCalledWith('s');
  expect(fetcher).not.toHaveBeenCalled();
  view.rerender(<GraphWorkspace {...props} graphs={[index]} jobs={[{id:'j',kind:'graphify',status:'running',source_id:'s'}]}/>);
@@ -37,6 +37,15 @@ it('offers a build for a legacy file index and loads the saved map on return',as
  view.unmount();
  render(<GraphWorkspace {...props} graphs={[index,{...index,id:'saved',metadata:{generator:'graphify'}}]}/>);
  await waitFor(()=>expect(fetcher.mock.calls.length).toBe(1));
- expect(screen.queryByRole('button',{name:'Build code map'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'Build code map with Graphify'})).toBeNull();
  expect(build).toHaveBeenCalledTimes(1);
+});
+
+it('shows only the empty state for an empty GitHub repository',()=>{
+ const build=vi.fn();
+ render(<GraphWorkspace base="/projects/p" graphs={[]} records={[]} onError={vi.fn()} build={build}
+   repositories={[{id:'s',name:'shop/cart',kind:'github',status:'empty'}]} uploadZip={vi.fn()}/>);
+ expect(screen.getByText('This repository is empty.')).toBeTruthy();
+ expect(screen.queryByRole('button')).toBeNull();
+ expect(build).not.toHaveBeenCalled();
 });

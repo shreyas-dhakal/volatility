@@ -51,6 +51,7 @@ def available():
         .where(
             IngestionJob.project_id == DesignRun.project_id,
             IngestionJob.created_at <= DesignRun.created_at,
+            IngestionJob.kind != "graphify",
             IngestionJob.status.in_(("queued", "running")),
         )
         .exists()

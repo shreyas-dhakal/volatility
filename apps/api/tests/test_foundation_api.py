@@ -311,3 +311,34 @@ def test_empty_repository_can_be_checked_again_after_first_commit(monkeypatch):
         assert client.get(base + "/sources").json()[0]["status"] == "ready"
         assert len(client.get(base + "/documents").json()) == 1
         assert client.post(path).status_code == 409
+        assert process_next_job()
+        graphs = client.get(base + "/graphs").json()
+        generated, = [g for g in graphs if g["metadata"].get("generator") == "graphify"]
+        assert generated["node_count"] > 0
+        assert not process_next_job()
+
+
+def test_repository_zip_generates_graph_without_git_or_commits():
+    from io import BytesIO
+    from zipfile import ZipFile
+
+    data = BytesIO()
+    with ZipFile(data, "w") as archive:
+        archive.writestr("app/pricing.py", "def price():\n    return 10\n")
+        archive.writestr("app/cart.py", "from .pricing import price\ndef total():\n    return price()\n")
+        archive.writestr(".env", "SECRET=example")
+    with TestClient(app) as client:
+        authenticate(client)
+        base = "/api/projects/" + project(client)["id"]
+        upload = client.post(base + "/documents", files={"file": ("working-tree.zip", data.getvalue())})
+        assert upload.status_code == 200
+        assert process_next_job()
+        assert process_next_job()
+        graph, = client.get(base + "/graphs").json()
+        assert graph["metadata"]["indexed_text_files"] == 2
+        assert graph["metadata"]["skipped_files"] == 1
+        assert graph["metadata"]["upload_id"] == upload.json()["id"]
+        export = client.get(base + "/graphs/" + graph["id"] + "/export").json()
+        assert any(n.get("source_file") == "app/cart.py" for n in export["nodes"])
+        assert any(e["relation"] == "calls" for e in export["links"])
+        assert client.get(base + "/sources").json() == []
