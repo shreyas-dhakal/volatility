@@ -1,3 +1,6 @@
+from itertools import count
+from uuid import NAMESPACE_URL, uuid5
+
 import httpx
 from clerk_backend_api.models import ClerkBaseError
 from fastapi import HTTPException
@@ -60,7 +63,7 @@ def api(token, path, params=None):
 def repositories(user):
     token = account_token(user)
     path = "/user/repos"
-    filters = {"visibility": "public"}
+    filters = {"visibility": "all"}
     if token is None:
         # Resolve by immutable provider ID so a renamed or reused login stays safe.
         github_id = user.github_account.provider_user_id
@@ -70,7 +73,7 @@ def repositories(user):
         path = f"/users/{login}/repos"
         filters = {"type": "owner"}
     result = []
-    for page in range(1, 11):
+    for page in count(1):
         batch = api(
             token,
             path,
@@ -82,8 +85,19 @@ def repositories(user):
                 for k in ("id", "full_name", "description", "private", "default_branch")
             }
             for r in batch
-            if not r.get("private")
+            if token or not r.get("private")
         )
         if len(batch) < 100:
             break
     return result
+
+
+def project_id_for_repo(user, repo_id):
+    return str(uuid5(NAMESPACE_URL, f"galvanise:github:{user.id}:{repo_id}"))
+
+
+def accessible_repo(user, full_name):
+    for repo in repositories(user):
+        if repo["full_name"].casefold() == full_name.casefold():
+            return repo
+    raise HTTPException(403, "Select a repository your GitHub connection can access")

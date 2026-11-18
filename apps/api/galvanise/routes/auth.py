@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from galvanise.dependencies import get_current_user
-from galvanise.integrations.github import repositories
+from galvanise.integrations.github import project_id_for_repo, repositories
 from galvanise.models import User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -19,4 +19,7 @@ def me(user: User = Depends(get_current_user)):
 
 @router.get("/github/repos")
 def repos(user: User = Depends(get_current_user)):
-    return repositories(user)
+    return [
+        {**repo, "project_id": project_id_for_repo(user, repo["id"])}
+        for repo in repositories(user)
+    ]

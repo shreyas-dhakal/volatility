@@ -189,19 +189,35 @@ def test_verified_clerk_github_connection_is_scoped_to_its_owner(client, monkeyp
         assert (
             token == "synthetic"
             and path == "/user/repos"
-            and params["visibility"] == "public"
+            and params["visibility"] == "all"
         )
         return [
-            {"full_name": "owner/public", "private": False},
-            {"full_name": "owner/private", "private": True},
+            {"id": 51, "full_name": "owner/public", "private": False},
+            {"id": 52, "full_name": "owner/private", "private": True},
         ]
 
     monkeypatch.setattr(github, "api", list_repos)
     auth(client)
     assert client.get("/api/auth/me").json()["github_connected"]
     assert [r["full_name"] for r in client.get("/api/auth/github/repos").json()] == [
-        "owner/public"
+        "owner/public",
+        "owner/private",
     ]
+    private_repo = {"full_name": "owner/private"}
+    opened = client.post("/api/projects/github", json=private_repo)
+    assert opened.status_code == 200
+    project_id = opened.json()["id"]
+    assert (
+        client.post("/api/projects/github", json=private_repo).json()["id"]
+        == project_id
+    )
+    assert len(client.get(f"/api/projects/{project_id}/jobs").json()) == 1
+    assert (
+        client.post(
+            "/api/projects/github", json={"full_name": "outside/hidden"}
+        ).status_code
+        == 403
+    )
     account.verification.status = "unverified"
     assert not client.get("/api/auth/me").json()["github_connected"]
     auth(client, sub="user_other")

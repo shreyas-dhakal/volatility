@@ -31,14 +31,14 @@ Clerk IDs map to stable local owner IDs.
 Enable GitHub under **SSO connections** in the Clerk Dashboard. In Galvanise,
 select **Settings → Connect GitHub** or sign in with GitHub through Clerk. A
 verified GitHub connection on the same Clerk account enables repository selection
-under **Files & code**. Users who linked GitHub only through the previous local
+in the **Project** menu and under **Files & code**. Selecting a repository in the Project menu creates its workspace and queues its first import. Users who linked GitHub only through the previous local
 OAuth flow need to link it once through Clerk. Existing imports stay available.
 
 With shared development credentials, Galvanise lists the linked user's own
 public repositories and uses GitHub's unauthenticated rate limit. To use
 authenticated GitHub reads, configure custom GitHub credentials in Clerk.
 Galvanise requests provider tokens server-side when listing or importing a
-repository and reads public repositories only.
+repository. For private or organization repositories, configure a GitHub App with read-only Contents and Metadata permissions and install it on the relevant account. Choose all repositories or select individual ones during installation. Organization policy may require administrator approval.
 
 [Clerk GitHub setup](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/github)
 

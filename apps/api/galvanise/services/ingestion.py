@@ -249,8 +249,13 @@ def ingest_repository(db, job):
     token = account_token(resolve_user(db, owner.clerk_user_id))
     repo = payload["full_name"]
     info = api(token, "/repos/" + repo)
-    if info.get("private"):
-        raise ValueError("Private repositories require a read-only GitHub App")
+    if (
+        payload.get("repository_id") is not None
+        and info["id"] != payload["repository_id"]
+    ):
+        raise ValueError("Repository identity changed")
+    if info.get("private") and (not token or not payload.get("repository_id")):
+        raise ValueError("Select the private repository again to authorize this import")
     tree = api(
         token, f"/repos/{repo}/git/trees/{info['default_branch']}", {"recursive": "1"}
     )

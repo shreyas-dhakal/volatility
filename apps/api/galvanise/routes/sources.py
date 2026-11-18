@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from galvanise.config import settings
 from galvanise.database import get_db
 from galvanise.dependencies import get_current_user, require_project
-from galvanise.integrations.github import repositories
+from galvanise.integrations.github import accessible_repo
 from galvanise.models import (
     ConnectedSource,
     IngestionJob,
@@ -171,17 +171,19 @@ def connect(
     user: User = Depends(get_current_user),
 ):
     require_project(project_id, db, user)
-    if not any(
-        r["full_name"].lower() == body.full_name.lower() and not r["private"]
-        for r in repositories(user)
-    ):
-        raise HTTPException(403, "Select an accessible public repository")
+    repo = accessible_repo(user, body.full_name)
+    job = queue_repository(db, project_id, user, repo)
+    db.commit()
+    return public_job(job)
+
+
+def queue_repository(db, project_id, user, repo):
     source = ConnectedSource(
         project_id=project_id,
         kind="github",
-        name=body.full_name,
+        name=repo["full_name"],
         status="pending",
-        metadata_json={"full_name": body.full_name},
+        metadata_json={"full_name": repo["full_name"]},
     )
     db.add(source)
     db.flush()
@@ -189,14 +191,14 @@ def connect(
         project_id=project_id,
         kind="github",
         payload={
-            "full_name": body.full_name,
+            "full_name": repo["full_name"],
             "source_id": source.id,
+            "repository_id": repo["id"],
             "user_id": user.id,
         },
     )
     db.add(job)
-    db.commit()
-    return public_job(job)
+    return job
 
 
 @router.get("/jobs")

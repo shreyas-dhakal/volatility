@@ -36,7 +36,7 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 
 - `GET /api/health` → `{status, ai_configured: bool, github_configured: bool}`
 - Clerk is the only sign-in provider. `GET /api/auth/me` returns the authenticated Clerk user profile or 401. The API has no local password or server-session endpoints.
-- Clerk manages GitHub account linking. `GET /api/auth/github/repos` lists accessible public repositories for the authenticated user.
+- Clerk manages GitHub account linking. `GET /api/auth/github/repos` lists repositories visible to the authenticated connection, including a stable owner-scoped `project_id`. `POST /api/projects/github` with `{full_name}` opens the corresponding project, creating it and its import job together on first selection.
 - `GET/POST /api/projects`, POST `{name,description,system_type,objective}` → Project. `GET /api/projects/{project_id}`.
 - `GET/POST /api/projects/{project_id}/conversations`, POST `{title?}` → Conversation.
 - `GET /api/projects/{project_id}/conversations/{conversation_id}/messages` → Message[].

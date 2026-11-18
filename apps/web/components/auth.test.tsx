@@ -56,3 +56,28 @@ it('asks before removing a connected repository and refreshes the file list',asy
   expect(connected).toBe(false);
   expect(screen.queryByRole('button',{name:'Delete org/parking from project'})).toBeNull();
 });
+
+it('offers connected repositories before a project exists and imports only the selected one',async()=>{
+ const {default:Page}=await import('./workspace');
+ const project={id:'p',name:'owner/private',system_type:'existing',description:'',objective:''};
+ let opened=false;
+ const fetcher=vi.fn(async(url:string,init?:RequestInit)=>{
+   let body:unknown=[];
+   if(url==='/api/auth/me')body={id:'u',name:'Alex',github_connected:true};
+   if(url==='/api/auth/github/repos')body=[{full_name:project.name,private:true,project_id:project.id}];
+   if(url==='/api/projects')body=opened?[project]:[];
+   if(url==='/api/projects/github'){
+     expect(JSON.parse(String(init?.body))).toEqual({full_name:project.name});
+     opened=true;body=project;
+   }
+   return new Response(JSON.stringify(body));
+ });
+ vi.stubGlobal('fetch',fetcher);
+ render(<Page onSignOut={async()=>{}} accountControl={null}/>);
+ fireEvent.click(await screen.findByRole('combobox',{name:/Project/}));
+ const repository=await screen.findByRole('option',{name:/owner\/private/});
+ expect(opened).toBe(false);
+ fireEvent.click(repository);
+ await screen.findByRole('heading',{name:'What is changing in your business?'});
+ expect(opened).toBe(true);
+});
