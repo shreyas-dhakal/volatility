@@ -24,6 +24,13 @@ Number = Annotated[float, Field(strict=True, allow_inf_nan=False)]
 Capacity = Annotated[Number, Field(ge=0, le=1)]
 Effort = Annotated[Number, Field(gt=0)]
 
+DRAFT_SKILLS = {
+    "contract": "contract design",
+    "component": "implementation",
+    "integration": "integration",
+    "validation": "validation",
+}
+
 ASSUMPTIONS = [
     "The calendar uses Monday through Friday, with inclusive finish dates.",
     "A successor starts on a later workday than every predecessor's finish.",
@@ -36,12 +43,17 @@ ASSUMPTIONS = [
 
 
 def _calendar_date(value):
+    if value is None or value == "":
+        return None
     if not isinstance(value, str) or len(value) != 10:
         raise ValueError("Enter a date in YYYY-MM-DD format")
-    return date.fromisoformat(value)
+    parsed = date.fromisoformat(value)
+    if parsed.isoformat() != value:
+        raise ValueError("Enter a date in YYYY-MM-DD format")
+    return parsed
 
 
-CalendarDate = Annotated[date, BeforeValidator(_calendar_date)]
+CalendarDate = Annotated[date | None, BeforeValidator(_calendar_date)]
 
 
 class InputModel(BaseModel):
@@ -81,24 +93,24 @@ class Activity(InputModel):
 
 
 class Commitment(InputModel):
-    start: CalendarDate
-    end: CalendarDate
-    fraction: Capacity = 1
+    start: CalendarDate = None
+    end: CalendarDate = None
+    fraction: Capacity | None = 1
 
     @model_validator(mode="after")
     def ordered(self):
-        if self.end < self.start:
+        if self.start and self.end and self.end < self.start:
             raise ValueError("Commitment end must be on or after its start")
         return self
 
 
 class Person(InputModel):
     id: Label
-    name: Label | None = None
+    name: str | None = None
     skills: list[Label] | None = None
     availability: Capacity | None = None
-    available_from: CalendarDate | None = None
-    available_until: CalendarDate | None = None
+    available_from: CalendarDate = None
+    available_until: CalendarDate = None
     commitments: list[Commitment] = Field(default_factory=list)
     daily_rate: Annotated[Number, Field(ge=0)] | None = None
 
@@ -115,14 +127,15 @@ class Person(InputModel):
 
 class Roster(InputModel):
     id: Label
-    name: Label | None = None
+    name: str | None = None
     people: list[Person] | None = None
 
 
 class Inputs(InputModel):
-    start_date: CalendarDate | None = None
+    start_date: CalendarDate = None
     activities: list[Activity] | None = None
     rosters: list[Roster] = Field(default_factory=list)
+    assumptions: list[Label] = Field(default_factory=list)
     scenarios: list[Scenario] | None = Field(default=None, min_length=1)
 
 
@@ -132,6 +145,7 @@ def _draft(kind, entity, deliverable, related_ids, predecessors=()):
         deliverable=deliverable,
         related_ids=sorted({entity["id"], *related_ids}),
         predecessors=sorted(set(predecessors)),
+        skills=[DRAFT_SKILLS[kind]],
         sources=entity.get("evidence", []),
     )
 
@@ -218,6 +232,7 @@ def _generate(snapshot):
                 Activity(
                     id="validation:architecture:remaining",
                     deliverable="Validate remaining component behavior and integrations",
+                    skills=[DRAFT_SKILLS["validation"]],
                     related_ids=sorted({i for a in uncovered for i in a.related_ids}),
                     predecessors=sorted(a.id for a in uncovered),
                 )
@@ -511,6 +526,14 @@ def plan(snapshot_dict, planning_inputs_dict):
                     f"Specify the fraction of each workday available for {person.name or pid}.",
                 )
                 ready_roster = False
+            for index, commitment in enumerate(person.commitments):
+                for field in ("start", "end", "fraction"):
+                    if getattr(commitment, field) is None:
+                        request(
+                            f"{path}.commitments.{index}.{field}",
+                            f"Specify the {field} for commitment {index + 1} of {person.name or pid}.",
+                        )
+                        ready_roster = False
 
         missing_rates = set()
         for scenario in scenarios:
@@ -564,6 +587,7 @@ def plan(snapshot_dict, planning_inputs_dict):
     return {
         "activities": [a.model_dump(mode="json") for a in activities.values()],
         "assumptions": ASSUMPTIONS.copy(),
+        "user_assumptions": inputs.assumptions,
         "missing_inputs": missing,
         "warnings": warnings,
         "runs": runs,

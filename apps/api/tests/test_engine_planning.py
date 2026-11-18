@@ -114,10 +114,11 @@ def test_generated_work_uses_contracts_for_parallel_implementation():
         "component:b",
         "integration:d",
     ]
+    assert activities["contract:k"]["skills"] == ["contract design"]
+    assert activities["component:b"]["skills"] == ["implementation"]
     assert activities["component:b"]["effort"]["likely"] is None
     assert result["runs"] == []
     assert {
-        "activities.component:b.skills",
         "activities.component:b.effort.likely",
         "start_date",
         "rosters",
@@ -243,3 +244,116 @@ def test_ready_successor_reconsidered_before_future_reservations():
 def test_reject_invalid_graph(changes, match):
     with pytest.raises(ValueError, match=match):
         plan({}, {"activities": changes})
+
+
+def test_planning_api_persists_three_roster_comparison(planning_inputs):
+    from fastapi.testclient import TestClient
+
+    from galvanise.database import Base, SessionLocal, engine
+    from galvanise.main import app
+    from galvanise.models import DesignHead, DesignRevision
+
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with TestClient(app) as client:
+        registration = client.post(
+            "/api/auth/register",
+            json={
+                "email": "plan@example.com",
+                "password": "long-password-123",
+                "name": "Planner",
+            },
+        )
+        assert registration.is_success, registration.text
+        project = client.post("/api/projects", json={"name": "Planning fixture"})
+        assert project.is_success, project.text
+        pid = project.json()["id"]
+        with SessionLocal() as db:
+            revision = DesignRevision(
+                project_id=pid,
+                snapshot_json={
+                    "components": [
+                        {
+                            "id": "price",
+                            "name": "Pricing",
+                            "role": "engine",
+                            "responsibility": "Calculate a charge",
+                            "owns": [],
+                            "rationale": "Own price calculations",
+                            "use_case_ids": [],
+                            "provisional": True,
+                            "evidence": [],
+                        }
+                    ],
+                },
+                source_ids=[],
+                diff_json={"added": [], "changed": [], "removed": []},
+            )
+            db.add(revision)
+            db.flush()
+            db.add(DesignHead(project_id=pid, current_revision_id=revision.id))
+            db.commit()
+            rid = revision.id
+
+        prefix = f"/api/projects/{pid}/design-engine"
+        draft = client.post(
+            prefix + "/plan", json={"revision_id": rid, "planning_inputs": {}}
+        )
+        assert draft.is_success, draft.text
+        assert "component:price" in {
+            a["id"] for a in draft.json()["result"]["activities"]
+        }
+        response = client.post(
+            prefix + "/plan",
+            json={"revision_id": rid, "planning_inputs": planning_inputs},
+        )
+        assert response.is_success, response.text
+        stored = response.json()
+        assert stored["revision_id"] == rid
+        assert stored["input"] == planning_inputs
+        solo, pair, blocked = stored["result"]["runs"]
+        assert (solo["makespan_days"], pair["makespan_days"]) == (5, 3)
+        assert solo["critical_path_days"] == pair["critical_path_days"] == 3
+        assert solo["total_cost"] is pair["total_cost"] is None
+        assert blocked["status"] == "infeasible"
+        assert blocked["blockers"][0]["skills"] == ["engineering"]
+        reload = client.get(prefix)
+        assert reload.is_success, reload.text
+        assert reload.json()["plan"] == stored
+
+        invalid = deepcopy(planning_inputs)
+        invalid["activities"][0]["predecessors"] = ["join"]
+        rejected = client.post(
+            prefix + "/plan", json={"revision_id": rid, "planning_inputs": invalid}
+        )
+        assert rejected.status_code == 422
+        assert client.get(prefix).json()["plan"]["id"] == stored["id"]
+
+
+def test_incomplete_form_identifies_missing_commitments_and_preserves_assumptions():
+    inputs = {
+        "assumptions": ["Hardware is ready"],
+        "start_date": "",
+        "activities": [activity("work", 2)],
+        "rosters": [
+            {
+                "id": "base",
+                "name": "",
+                "people": [
+                    person(
+                        name="",
+                        commitments=[{"start": "", "end": None, "fraction": None}],
+                    ),
+                ],
+            }
+        ],
+    }
+    result = plan({}, inputs)
+    assert result["runs"][0]["status"] == "missing_inputs"
+    assert result["user_assumptions"] == inputs["assumptions"]
+    assert {m["path"] for m in result["missing_inputs"]} == {
+        "start_date",
+        "rosters.base.people.p.commitments.0.start",
+        "rosters.base.people.p.commitments.0.end",
+        "rosters.base.people.p.commitments.0.fraction",
+    }
