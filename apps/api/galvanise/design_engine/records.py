@@ -52,8 +52,10 @@ def resolve(value, aliases):
     return out
 
 
-def bind_records(snapshot, changes):
+def bind_records(snapshot, changes, hints):
     prior_kinds = {row["id"]: kind for kind, row in all_rows(snapshot)}
+    issued = {h["id"]: h["collection"] for h in hints}
+    issued.update((op, "operations") for h in hints for op in h["operation_ids"])
     aliases = {}
     seen_ids = set()
     operation_contracts = {
@@ -63,6 +65,9 @@ def bind_records(snapshot, changes):
     }
     # Inventory alone is merged by normalized factual content. Equal labels never
     # establish identity between two proposals, contracts or operations.
+    operation_contracts.update(
+        (op, h["id"]) for h in hints for op in h["operation_ids"]
+    )
     observations = {}
 
     def fact_key(kind, row):
@@ -93,6 +98,10 @@ def bind_records(snapshot, changes):
                     f"Use a new ID for an observation conflicting with {handle}."
                 )
             target = handle
+        elif handle in issued:
+            if issued[handle] != kind:
+                raise ValueError(f"Incorrect kind for prior ID {handle}.")
+            target = handle
         else:
             target = observations.get(fact) or str(uuid4())
         aliases[handle] = target
@@ -116,9 +125,9 @@ def bind_records(snapshot, changes):
     return resolve(changes, aliases)
 
 
-def upsert(snapshot, changes, catalog=None):
+def upsert(snapshot, changes, hints=()):
     candidate = deepcopy(snapshot)
-    resolved = bind_records(catalog or snapshot, changes)
+    resolved = bind_records(snapshot, changes, hints)
     for kind in COLLECTIONS:
         indexed = {row["id"]: row for row in candidate[kind]}
         for row in resolved.get(kind, []):
@@ -184,7 +193,7 @@ def reference_ids(value):
                 yield from reference_ids(item)
 
 
-def reuse_candidates(base, chunks):
+def identity_hints(base, chunks):
     """Reuse identity only for proposals with provenance in the new selection.
 
     Start a fresh snapshot. Prior rows are suggestions to the provider, never
@@ -195,14 +204,14 @@ def reuse_candidates(base, chunks):
     filtered = {field: [] for field in COLLECTIONS}
     anchored = set()
     for field in COLLECTIONS:
-        for row in base[field]:
+        for row in base.get(field, []):
             retained = [
                 c
-                for c in row["evidence"]
+                for c in row.get("evidence", [])
                 if c["chunk_id"] in text
                 and normalized(c["excerpt"]) in text[c["chunk_id"]]
             ]
-            if retained or not row["evidence"]:
+            if retained or not row.get("evidence"):
                 filtered[field].append(row | {"evidence": retained})
             if retained:
                 anchored.add(row["id"])
@@ -225,19 +234,48 @@ def reuse_candidates(base, chunks):
         if valid == reachable:
             break
         reachable = valid
-    return {
-        field: [row for row in rows if row["id"] in reachable]
+    # Only IDs, reference structure and authorized excerpts can leave this
+    # function. Even mixed-source prior descriptions might quote excluded text.
+    return [
+        {
+            "collection": field,
+            "id": row["id"],
+            "evidence": row["evidence"],
+            "links": {
+                key: value
+                for key, value in row.items()
+                if key.endswith(("_id", "_ids")) or key == "owns"
+            },
+            "operation_ids": [op["id"] for op in row.get("operations", [])],
+        }
         for field, rows in filtered.items()
-    }
+        for row in rows
+        if row["id"] in reachable
+    ]
 
 
-def with_candidates(snapshot, candidates, fields):
-    if not candidates:
-        return snapshot
-    result = dict(snapshot)
-    for field in fields:
-        if field in COLLECTIONS:
-            rows = {r["id"]: r for r in candidates[field]}
-            rows.update((r["id"], r) for r in snapshot[field])
-            result[field] = list(rows.values())
-    return result
+def hints_for_call(hints, fields, chunks):
+    supplied = {}
+    for c in chunks:
+        supplied.setdefault(c["id"], []).append(normalized(c["text"]))
+    selected = []
+    remaining = 24_000
+    for hint in hints:
+        if hint["collection"] not in fields:
+            continue
+        citations = [
+            c
+            for c in hint["evidence"]
+            if any(
+                normalized(c["excerpt"]) in text
+                for text in supplied.get(c["chunk_id"], [])
+            )
+        ]
+        if hint["evidence"] and not citations:
+            continue
+        projected = hint | {"evidence": citations}
+        size = len(str(projected))
+        if size <= remaining:
+            selected.append(projected)
+            remaining -= size
+    return selected

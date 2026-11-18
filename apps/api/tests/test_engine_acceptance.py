@@ -530,3 +530,70 @@ def test_g_schedules_persist_with_exact_inputs_and_revision(
         b["activity_id"] in ("A", "B") and "implementation" in b["skills"]
         for b in blocked["blockers"]
     )
+
+
+def test_selecting_different_upload_preserves_previous_revision(
+    parking_project, parking_model
+):
+    project = parking_project
+    previous = project.publish()
+    selected = project.upload("fixed.py", FIXED_TARIFF_CODE)
+    queued = project.analyze(selected, key="fixed-code-only")
+    run_design_worker()
+    view = project.overview()
+    assert view["run"]["id"] == queued["id"] and view["run"]["status"] == "completed", (
+        view["run"]
+    )
+    revised = view["revision"]
+    assert revised["parent_revision_id"] == previous["id"]
+    assert [s["path"] for s in revised["snapshot"]["manifest"]] == ["fixed.py"]
+    assert all(v["status"] == "hypothesis" for v in revised["snapshot"]["volatilities"])
+    assert {
+        project.chunk(ref)["locator"]["path"] for ref in citations(revised["snapshot"])
+    } == {"fixed.py"}
+    assert (
+        payload(project.client.get(f"{project.design}/revisions/{previous['id']}"))
+        == previous
+    )
+
+
+def test_overlapping_selection_retains_grounded_ids_only(
+    parking_project, parking_model, monkeypatch
+):
+    from galvanise.design_engine import pipeline
+
+    project = parking_project
+    kept = project.upload("parking.md", PARKING_TEXT)
+    omitted = "An unrelated confidential note about archived visit counters."
+    project.upload("omitted.md", omitted)
+    payload(
+        project.client.post(
+            f"{project.design}/analyze", json={"idempotency_key": "both"}
+        )
+    )
+    run_design_worker()
+    base = project.overview()["revision"]
+    assert base
+
+    async def inspect(stage, context):
+        assert omitted not in str(context) and "omitted.md" not in str(context)
+        return await parking_model(stage, context)
+
+    monkeypatch.setattr(pipeline, "call_model", inspect)
+    project.analyze(kept, key="only-kept")
+    run_design_worker()
+    view = project.overview()
+    assert view["run"]["status"] == "completed", view["run"]
+    for field in (
+        "actors",
+        "implementation_findings",
+        "components",
+        "volatilities",
+        "contracts",
+        "dependencies",
+        "walkthroughs",
+        "change_probes",
+    ):
+        assert {r["id"] for r in view["revision"]["snapshot"][field]} == {
+            r["id"] for r in base["snapshot"][field]
+        }, field

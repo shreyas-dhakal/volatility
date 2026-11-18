@@ -7,7 +7,7 @@ from copy import deepcopy
 from .context import Chunk, Correction, context_for, inventory_batches, relevant_chunks
 from .model import call_model
 from .prompts import STAGES
-from .records import COLLECTIONS, reuse_candidates, upsert, with_candidates
+from .records import COLLECTIONS, hints_for_call, identity_hints, upsert
 from .schemas import Snapshot
 from .validation import (
     check_evidence,
@@ -18,8 +18,8 @@ from .validation import (
 )
 
 
-def signature(chunks, manifest, base, correction, start_stage):
-    data = [1, chunks, manifest, base, correction, start_stage]
+def signature(chunks, manifest, base, correction, start_stage, prior_ids):
+    data = [2, chunks, manifest, base, correction, start_stage, prior_ids]
     return hashlib.sha256(
         json.dumps(data, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -46,7 +46,7 @@ def check_final(candidate, chunks, correction):
     Snapshot.model_validate(candidate)
 
 
-async def run_call(stage, snapshot, context, all_chunks, correction, catalog):
+async def run_call(stage, snapshot, context, all_chunks, correction, hints):
     schema, _ = STAGES[stage]
     diagnostics = []
     request = context
@@ -56,7 +56,7 @@ async def run_call(stage, snapshot, context, all_chunks, correction, catalog):
             raw = await call_model(stage, request)
             changes = schema.model_validate(raw).model_dump()
             check_evidence(changes, context["chunks"])
-            candidate = upsert(snapshot, changes, catalog)
+            candidate = upsert(snapshot, changes, hints)
             if stage == "review":
                 review_reasons(snapshot, candidate)
                 previous_checks = {f["id"] for f in review_checks(snapshot)}
@@ -83,7 +83,15 @@ async def run_call(stage, snapshot, context, all_chunks, correction, catalog):
 
 
 async def generate(
-    *, chunks, manifest, base, correction, start_stage, checkpoint, save_checkpoint
+    *,
+    chunks,
+    manifest,
+    base,
+    correction,
+    start_stage,
+    checkpoint,
+    save_checkpoint,
+    prior_ids=(),
 ):
     """Return a new validated snapshot, resuming only a checkpoint from the same inputs."""
     if start_stage not in {"inventory", "use_cases", "volatility", "boundaries"}:
@@ -104,10 +112,10 @@ async def generate(
             raise ValueError(
                 "The correction must reference text from an authorized user message."
             )
-    fingerprint = signature(chunks, manifest, base, correction, start_stage)
+    fingerprint = signature(chunks, manifest, base, correction, start_stage, prior_ids)
     fresh = start_stage == "inventory" and not correction
     base = Snapshot.model_validate(base).model_dump() if base is not None else None
-    candidates = reuse_candidates(base, chunks) if base and fresh else None
+    candidates = identity_hints(base, chunks) if base and fresh else prior_ids
     order = list(STAGES)
     start = order.index(start_stage)
     if (
@@ -136,17 +144,16 @@ async def generate(
         else:
             batches = [relevant_chunks(stage, chunks, snapshot, correction)]
         for batch in batches:
-            identities = None if stage == "review" else candidates
-            catalog = with_candidates(
-                snapshot, identities, STAGES[stage][0].model_fields
+            context = context_for(stage, snapshot, batch, correction)
+            hints = (
+                hints_for_call(candidates, STAGES[stage][0].model_fields, batch)
+                if fresh and stage != "review"
+                else []
             )
-            context = context_for(stage, catalog, batch, correction)
-            if identities:
-                context["reanalyze"] = (
-                    "Return this stage's complete output from selected evidence. Prior IDs are for matching meaning only."
-                )
+            if hints:
+                context["prior_ids"] = hints
             snapshot = await run_call(
-                stage, snapshot, context, chunks, correction, catalog
+                stage, snapshot, context, chunks, correction, hints
             )
         save_checkpoint(
             stage,
