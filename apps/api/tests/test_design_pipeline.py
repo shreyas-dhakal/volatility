@@ -450,3 +450,15 @@ def test_call_local_handles_round_trip_without_changing_evidence_text():
         "target_ids": [owner_id],
         "evidence": [{"chunk_id": source_id, "excerpt": "source_1"}],
     }
+
+
+@pytest.mark.asyncio
+async def test_exception_flow_resolves_when_source_wraps_a_line(monkeypatch):
+    def wrapped(stage, context, result):
+        if stage == "walkthroughs":
+            for step in result["walkthroughs"][0]["steps"]:
+                if step["path"] != "main":
+                    step["path"] = step["path"].replace(" ", "\n", 1)
+
+    result = await altered(monkeypatch, wrapped)
+    assert any("\n" in step["path"] for step in result["walkthroughs"][0]["steps"])

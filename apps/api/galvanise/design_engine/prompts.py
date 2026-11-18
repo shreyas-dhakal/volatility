@@ -55,7 +55,8 @@ Probes are predictions of owners, components edited and specific leaks. Never cl
 Link each component rationale through owns, use_case_ids or rationale_ids for cited inventory resources or infrastructure findings.
 In review, inspect dependency cycles, unnecessary components, poor change containment, low
 evidence, duplicated decisions and exposed vendor details. Use revision findings to explain
-material changes; target every changed component, contract, dependency, walkthrough and probe. Retire only obsolete proposal IDs, explicitly giving the reason. Keep at
+material changes. Return only changed or new rows during review. Use empty arrays for collections without changes.
+Target every changed component, contract, dependency, walkthrough and probe. Retire only obsolete proposal IDs, explicitly giving the reason. Keep at
 most three questions. A step must never silently lose its operation or relevant exception.
 If material is insufficient, disclose the specific gap. Never invent a use case or component
 to fill an empty collection."""

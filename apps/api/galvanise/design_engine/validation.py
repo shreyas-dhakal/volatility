@@ -147,10 +147,10 @@ def check_links(snapshot, stage):
         if case_id in covered:
             raise ValueError(f"Multiple walkthroughs for use case {case_id}.")
         covered.add(case_id)
-        paths = {"main", *cases[case_id]["exceptions"]}
+        paths = {"main", *(normalized(path) for path in cases[case_id]["exceptions"])}
         seen_paths = set()
         for step in walk["steps"]:
-            seen_paths.add(step["path"])
+            seen_paths.add(normalized(step["path"]))
             for field in ("caller_id", "callee_id"):
                 ref(step[field], "components", walk["id"])
             operation = step["operation_id"]
