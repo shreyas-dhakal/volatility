@@ -9,21 +9,18 @@ os.environ.update(
 )
 import time
 from types import SimpleNamespace as NS
-from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from galvanise import clerk_identity
 from galvanise.config import settings
 from galvanise.database import Base, SessionLocal, engine
 from galvanise.main import app
-from galvanise.models import Account, Project, User
-from galvanise.security import encrypt
+from galvanise.models import Project, User
 
 PRIVATE = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PUBLIC = (
@@ -157,64 +154,99 @@ def test_cookie_alone_never_authenticates(client):
         assert client.get(route).status_code == 401, route
 
 
-def test_github_source_start_requires_bearer_and_returns_navigation_url(
-    client, monkeypatch
-):
-    monkeypatch.setattr(settings, "github_client_id", "synthetic-client")
-    monkeypatch.setattr(settings, "github_client_secret", "synthetic-secret")
-    assert client.get("/api/auth/github/start").status_code == 401
-    auth(client)
-    response = client.post("/api/auth/github/start")
-    assert response.status_code == 200
-    url = response.json()["url"]
-    assert urlparse(url).netloc == "github.com"
-    assert parse_qs(urlparse(url).query)["scope"] == ["read:user user:email"]
-    assert "HttpOnly" in response.headers["set-cookie"]
+def test_verified_clerk_github_connection_is_scoped_to_its_owner(client, monkeypatch):
+    from galvanise.integrations import github
 
+    upstream = clerk_identity.provider()
+    get = upstream.get
+    account = NS(
+        id="external_test",
+        provider="oauth_github",
+        provider_user_id="123",
+        verification=NS(status="verified"),
+    )
 
-def test_source_callback_links_without_issuing_session_or_changing_owner(
-    client, monkeypatch
-):
-    from galvanise.routes import auth as routes
+    def profile(subject):
+        remote = get(subject)
+        remote.external_accounts = [account] if subject == "user_owner" else []
+        return remote
 
-    monkeypatch.setattr(settings, "github_client_id", "synthetic-client")
-    monkeypatch.setattr(settings, "github_client_secret", "synthetic-secret")
-    auth(client)
-    start = client.post("/api/auth/github/start")
-    state = parse_qs(urlparse(start.json()["url"]).query)["state"][0]
+    monkeypatch.setattr(upstream, "get", profile)
+    monkeypatch.setattr(clerk_identity, "provider", lambda: upstream)
+    monkeypatch.setattr(github, "provider", lambda: upstream)
     monkeypatch.setattr(
-        routes.httpx,
-        "post",
-        lambda *a, **kw: NS(
-            raise_for_status=lambda: None,
-            json=lambda: {"access_token": "synthetic-source-token"},
+        upstream,
+        "github_tokens",
+        lambda subject: (
+            [NS(external_account_id=account.id, token="synthetic")]
+            if subject == "user_owner"
+            else []
         ),
+        raising=False,
     )
-    monkeypatch.setattr(
-        routes,
-        "api",
-        lambda t, path: {"id": 123, "login": "test"} if path == "/user" else [],
+
+    def list_repos(token, path, params):
+        assert (
+            token == "synthetic"
+            and path == "/user/repos"
+            and params["visibility"] == "public"
+        )
+        return [
+            {"full_name": "owner/public", "private": False},
+            {"full_name": "owner/private", "private": True},
+        ]
+
+    monkeypatch.setattr(github, "api", list_repos)
+    auth(client)
+    assert client.get("/api/auth/me").json()["github_connected"]
+    assert [r["full_name"] for r in client.get("/api/auth/github/repos").json()] == [
+        "owner/public"
+    ]
+    account.verification.status = "unverified"
+    assert not client.get("/api/auth/me").json()["github_connected"]
+    auth(client, sub="user_other")
+    assert client.get("/api/auth/github/repos").status_code == 400
+
+
+@pytest.mark.parametrize("shared_credentials", [True, False])
+def test_public_repository_lookup_uses_the_verified_numeric_id(
+    monkeypatch, shared_credentials
+):
+    import httpx
+    from clerk_backend_api.models import SDKError
+    from galvanise.integrations import github
+
+    user = NS(
+        clerk_user_id="user_owner",
+        github_account=NS(id="external_test", provider_user_id="123"),
     )
-    client.headers.pop("Authorization")
-    response = client.get(
-        "/api/auth/github/callback",
-        params={"state": state, "code": "synthetic"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 307
-    assert "session=" not in response.headers.get("set-cookie", "")
-    with SessionLocal() as db:
-        account = db.scalar(select(Account))
-        assert account.user_id == "owner"
-        assert len(db.scalars(select(User)).all()) == 2
-    assert (
-        client.get(
-            "/api/auth/github/callback",
-            params={"state": state, "code": "synthetic"},
-            follow_redirects=False,
-        ).status_code
-        == 400
-    )
+
+    def github_tokens(subject):
+        if shared_credentials:
+            response = httpx.Response(
+                403,
+                json={
+                    "errors": [
+                        {
+                            "code": "oauth_shared_credentials_stored_token_not_retrievable"
+                        }
+                    ]
+                },
+            )
+            raise SDKError("Forbidden", response)
+        return []
+
+    monkeypatch.setattr(github, "provider", lambda: NS(github_tokens=github_tokens))
+
+    def public_api(token, path, params=None):
+        assert token is None
+        if path == "/user/123":
+            return {"login": "renamed"}
+        assert path == "/users/renamed/repos"
+        return [{"full_name": "renamed/public", "private": False}]
+
+    monkeypatch.setattr(github, "api", public_api)
+    assert github.repositories(user)[0]["full_name"] == "renamed/public"
 
 
 @pytest.mark.parametrize(
@@ -240,42 +272,3 @@ def test_upload_requires_clerk_before_persisting_source(client):
         files={"file": ("synthetic.txt", b"synthetic", "text/plain")},
     )
     assert response.status_code == 401
-
-
-def test_source_link_cannot_steal_another_owners_github_account(client, monkeypatch):
-    from galvanise.routes import auth as routes
-
-    monkeypatch.setattr(settings, "github_client_id", "synthetic-client")
-    monkeypatch.setattr(settings, "github_client_secret", "synthetic-secret")
-    with SessionLocal() as db:
-        db.add(
-            Account(
-                user_id="other",
-                github_id="123",
-                token_ciphertext=encrypt("original-synthetic"),
-            )
-        )
-        db.commit()
-    auth(client)
-    start = client.post("/api/auth/github/start")
-    state = parse_qs(urlparse(start.json()["url"]).query)["state"][0]
-    monkeypatch.setattr(
-        routes.httpx,
-        "post",
-        lambda *a, **kw: NS(
-            raise_for_status=lambda: None, json=lambda: {"access_token": "synthetic"}
-        ),
-    )
-    monkeypatch.setattr(
-        routes,
-        "api",
-        lambda t, path: {"id": 123, "login": "test"} if path == "/user" else [],
-    )
-    response = client.get(
-        "/api/auth/github/callback",
-        params={"state": state, "code": "synthetic"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 409
-    with SessionLocal() as db:
-        assert db.scalar(select(Account)).user_id == "other"

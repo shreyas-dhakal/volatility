@@ -4,14 +4,16 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 vi.mock('@stylexjs/stylex',async original=>({...await original<object>(),create:(styles:Record<string,unknown>)=>Object.fromEntries(Object.keys(styles).map(k=>[k,{}]))}));
 import {GitHubAction,NavigationItem,ReviewState} from './workspace-ui';
-afterEach(cleanup);
+const createExternalAccount=vi.hoisted(()=>vi.fn());
+vi.mock('@clerk/nextjs',()=>({useClerk:()=>({user:{externalAccounts:[],createExternalAccount}})}));
+afterEach(()=>{cleanup();vi.restoreAllMocks()});
 
 it('keeps unavailable GitHub access disabled and explains how to enable it',()=>{
  render(<GitHubAction available={false}/>);
  const button=screen.getByRole('button',{name:'GitHub not set up'});
  expect(button.getAttribute('aria-disabled')).toBe('true');
  expect(button.getAttribute('href')).toBe(null);
- expect(screen.getByText('You can upload files now. GitHub can be set up later in Settings.')).toBeTruthy();
+ expect(screen.getByText('You can upload files while Clerk is being configured.')).toBeTruthy();
 });
 
 it('opens an available section and prevents navigation before a project exists',()=>{
@@ -34,18 +36,11 @@ it('keeps the guided process and the original Designs navigation available indep
  const open=vi.fn();render(<><NavigationItem view="Design process" active available onClick={open}/><NavigationItem view="Designs" active={false} available onClick={open}/></>);expect(screen.getByRole('button',{name:'Design process'}).getAttribute('aria-current')).toBe('page');expect(screen.getByRole('button',{name:'Designs'})).toBeTruthy();
 });
 
-it('starts source linking with authenticated POST and reports a failure inline',async()=>{
- const {configureTokenGetter}=await import('../lib/api');configureTokenGetter(async()=>'source-token');
- const fetcher=vi.fn().mockResolvedValue(new Response('{"detail":"Please reconnect"}',{status:409}));vi.stubGlobal('fetch',fetcher);
- try{render(<GitHubAction available/>);fireEvent.click(screen.getByRole('button',{name:'Connect GitHub'}));
- expect(await screen.findByText('Please reconnect')).toBeTruthy();
- expect(fetcher.mock.calls[0][1].method).toBe('POST');expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer source-token');
- }finally{configureTokenGetter(undefined);vi.unstubAllGlobals()}
-});
-
-it('navigates only to GitHub after a successful authenticated source-link start',async()=>{
- const go=vi.fn();vi.stubGlobal('location',{assign:go});vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"url":"https://github.com/login/oauth/authorize?state=synthetic"}')));
- try{render(<GitHubAction available/>);fireEvent.click(screen.getByRole('button',{name:'Connect GitHub'}));
- await vi.waitFor(()=>expect(go).toHaveBeenCalledWith('https://github.com/login/oauth/authorize?state=synthetic'));
- }finally{vi.unstubAllGlobals()}
+it('asks Clerk to link GitHub to the current user and reports connection errors',async()=>{
+ createExternalAccount.mockRejectedValueOnce(new Error('Connection unavailable'));
+ render(<GitHubAction available/>);
+ fireEvent.click(screen.getByRole('button',{name:'Connect GitHub'}));
+ await screen.findByRole('alert');
+ expect(screen.getByText('Connection unavailable')).toBeTruthy();
+ expect(createExternalAccount).toHaveBeenCalledWith({strategy:'oauth_github',redirectUrl:new URL('/',window.location.origin).href});
 });

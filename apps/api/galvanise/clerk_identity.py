@@ -18,6 +18,11 @@ class IdentityProvider:
     def get(self, subject):
         return self.sdk.users.get(user_id=subject)
 
+    def github_tokens(self, subject):
+        return self.sdk.users.get_o_auth_access_token(
+            user_id=subject, provider="github"
+        )
+
     def update(self, subject, external_id):
         return self.sdk.users.update(user_id=subject, external_id=external_id)
 
@@ -115,4 +120,14 @@ def resolve_user(db, subject, identity_provider=None):
             raise HTTPException(
                 409, "Profile email conflicts with another account; request recovery"
             ) from None
+    user.github_account = next(
+        (
+            account
+            for account in getattr(remote, "external_accounts", [])
+            if account.provider in ("github", "oauth_github")
+            and account.verification
+            and account.verification.status == "verified"
+        ),
+        None,
+    )
     return user

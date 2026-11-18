@@ -13,8 +13,7 @@ Set these values in the private root `.env` file:
 - `CLERK_SECRET_KEY` and `CLERK_ISSUER` for API verification and profile lookup.
 - `CLERK_AUTHORIZED_PARTIES` as a JSON array of allowed web origins, for example
   `["http://localhost:3000"]`.
-- `SOURCE_TOKEN_ENCRYPTION_KEY` to encrypt GitHub source tokens stored by the
-  API. Keep it stable while those credentials are in use.
+- `SOURCE_TOKEN_ENCRYPTION_KEY` to encrypt queued document uploads. Keep it stable while uploads are pending.
 
 `CLERK_JWT_KEY` is an optional PEM public key for local JWT verification;
 otherwise the Clerk SDK uses the server key. `CLERK_AUDIENCE` is only needed when
@@ -26,6 +25,22 @@ issued-at, user subject and session ID. It accepts session tokens only from the
 bearer header. Clerk profile lookup verifies that users are active and their
 primary email is verified. Project ownership remains in Galvanise's database;
 Clerk IDs map to stable local owner IDs.
+
+## GitHub repository access
+
+Enable GitHub under **SSO connections** in the Clerk Dashboard. In Galvanise,
+select **Settings → Connect GitHub** or sign in with GitHub through Clerk. A
+verified GitHub connection on the same Clerk account enables repository selection
+under **Files & code**. Users who linked GitHub only through the previous local
+OAuth flow need to link it once through Clerk. Existing imports stay available.
+
+With shared development credentials, Galvanise lists the linked user's own
+public repositories and uses GitHub's unauthenticated rate limit. To use
+authenticated GitHub reads, configure custom GitHub credentials in Clerk.
+Galvanise requests provider tokens server-side when listing or importing a
+repository and reads public repositories only.
+
+[Clerk GitHub setup](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/github)
 
 ## Existing owner records
 

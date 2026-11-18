@@ -44,7 +44,7 @@ def main() -> None:
         content = '\n'.join(content.splitlines()) + '\n'
         config.write_text(content)
         config.chmod(0o600)
-        print('Created .env. Configure Clerk, OpenAI, and GitHub there to enable them.', flush=True)
+        print('Created .env. Configure Clerk and OpenAI there to enable them.', flush=True)
     web_url = env_value('WEB_URL', 'http://localhost:3000')
     address = urlparse(web_url)
     if address.hostname not in ('localhost', '127.0.0.1') or address.scheme != 'http':
@@ -56,7 +56,7 @@ def main() -> None:
             try:
                 probe.bind(('127.0.0.1', port))
             except OSError:
-                raise SystemExit(f'Port {port} is occupied. Change WEB_URL and GITHUB_CALLBACK_URL in .env or use --api-port.')
+                raise SystemExit(f'Port {port} is occupied. Change WEB_URL in .env or use --api-port.')
     if not args.skip_db:
         run(['docker', 'compose', 'up', '-d', '--wait', 'db'])
     if not (ROOT / 'node_modules' / 'next').exists():

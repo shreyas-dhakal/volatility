@@ -16,7 +16,7 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 
 `galvanise.dependencies`: `get_current_user(request: Request, db: Session = Depends(get_db)) -> User`; `require_project(project_id: str, db: Session, user: User) -> Project` (404 on absent/unowned). Every intelligence route calls this directly or through dependency. No circular imports from main.
 
-`galvanise.config`: `settings` Pydantic Settings instance with `openai_api_key: str`, `openai_model: str` (default gpt-5.5), `database_url`, `clerk_secret_key`, `clerk_jwt_key`, `clerk_issuer`, `clerk_authorized_parties`, `clerk_audience`, `web_url`, `github_client_id`, `github_client_secret`, `github_callback_url`, `max_upload_bytes`. `SOURCE_TOKEN_ENCRYPTION_KEY` encrypts GitHub credentials. Load root `.env` as well as local env. Never print secrets.
+`galvanise.config`: `settings` Pydantic Settings instance with `openai_api_key: str`, `openai_model: str` (default gpt-5.5), `database_url`, `clerk_secret_key`, `clerk_jwt_key`, `clerk_issuer`, `clerk_authorized_parties`, `clerk_audience`, `web_url`, `max_upload_bytes`. `SOURCE_TOKEN_ENCRYPTION_KEY` encrypts queued document uploads. Load root `.env` as well as local env. Never print secrets.
 
 `galvanise.models` mapped classes (all IDs `String` with UUID-string Python default):
 
@@ -36,7 +36,7 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 
 - `GET /api/health` → `{status, ai_configured: bool, github_configured: bool}`
 - Clerk is the only sign-in provider. `GET /api/auth/me` returns the authenticated Clerk user profile or 401. The API has no local password or server-session endpoints.
-- `GET /api/auth/github/start` redirect GitHub sign-in/connect. callback server only. Secure state and TTL. Least privilege OAuth `read:user user:email` (public repositories; document private-repository GitHub App future limit). Return `WEB_URL` on success. `GET /api/auth/github/repos` → `[{id,full_name,description,private,default_branch}]`.
+- Clerk manages GitHub account linking. `GET /api/auth/github/repos` lists accessible public repositories for the authenticated user.
 - `GET/POST /api/projects`, POST `{name,description,system_type,objective}` → Project. `GET /api/projects/{project_id}`.
 - `GET/POST /api/projects/{project_id}/conversations`, POST `{title?}` → Conversation.
 - `GET /api/projects/{project_id}/conversations/{conversation_id}/messages` → Message[].

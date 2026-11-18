@@ -2,7 +2,7 @@
 
 Accepted for MVP, 2026-11-17.
 
-Use GitHub OAuth for identity and account connection, with `read:user user:email`. Repository source retrieval is limited to public repositories visible through the connected user's repository listing. GitHub tokens stay encrypted in the database, never in browser responses or logs.
+Clerk manages GitHub identity linking and provider tokens. Galvanise uses the verified external account of the signed-in owner for public repository reads. Shared development credentials use public GitHub endpoints. Custom credentials in Clerk enable authenticated reads.
 
 GitHub's classic `repo` and `public_repo` OAuth scopes grant repository write access. Galvanise does not request them. GitHub explicitly documents that no scope grants read-only public information access in its [OAuth scope reference](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
 

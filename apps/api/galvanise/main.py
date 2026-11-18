@@ -46,11 +46,7 @@ def health():
     return {
         "status": "ok",
         "ai_configured": bool(settings.openai_api_key),
-        "github_configured": bool(
-            settings.github_client_id
-            and settings.github_client_secret
-            and settings.source_token_encryption_key
-        ),
+        "github_configured": bool(settings.clerk_secret_key),
     }
 
 

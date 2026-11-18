@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from galvanise.config import settings
 from galvanise.database import get_db
 from galvanise.dependencies import get_current_user, require_project
-from galvanise.integrations.github import account_token, repositories
+from galvanise.integrations.github import repositories
 from galvanise.models import (
     ConnectedSource,
     IngestionJob,
@@ -173,7 +173,7 @@ def connect(
     require_project(project_id, db, user)
     if not any(
         r["full_name"].lower() == body.full_name.lower() and not r["private"]
-        for r in repositories(account_token(db, user.id))
+        for r in repositories(user)
     ):
         raise HTTPException(403, "Select an accessible public repository")
     source = ConnectedSource(

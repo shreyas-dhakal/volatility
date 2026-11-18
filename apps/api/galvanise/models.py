@@ -31,6 +31,8 @@ class Identity:
 
 class User(Identity, Base):
     __tablename__ = "users"
+    # Request-scoped Clerk profile data, never persisted.
+    github_account = None
     email: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String)
     clerk_user_id: Mapped[str | None] = mapped_column(

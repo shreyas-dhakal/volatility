@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 
 from sqlalchemy import select, update
 
+from galvanise.clerk_identity import resolve_user
 from galvanise.config import settings
 from galvanise.database import SessionLocal
 from galvanise.integrations.github import account_token, api
@@ -14,6 +15,7 @@ from galvanise.models import (
     IngestionJob,
     SourceDocument,
     TechnicalGraph,
+    User,
     now,
 )
 from galvanise.security import decrypt
@@ -241,7 +243,10 @@ def extract_bounded(data, name, *, project=False):
 
 def ingest_repository(db, job):
     payload = job.payload
-    token = account_token(db, payload["user_id"])
+    owner = db.get(User, payload["user_id"])
+    if not owner or not owner.clerk_user_id:
+        raise ValueError("GitHub connection unavailable")
+    token = account_token(resolve_user(db, owner.clerk_user_id))
     repo = payload["full_name"]
     info = api(token, "/repos/" + repo)
     if info.get("private"):

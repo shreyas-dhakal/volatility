@@ -6,6 +6,7 @@ from datetime import timedelta
 from threading import Barrier
 
 import pytest
+from auth_helpers import authenticate_as
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, func, select, update
 from sqlalchemy.orm import sessionmaker
@@ -175,7 +176,7 @@ def test_scope_checks_include_messages_chunks_runs_and_plan_inputs(api):
         == 404
     )
     with TestClient(app) as other:
-        authenticate(other, "other@example.org")
+        authenticate(other, "other@example.org", session_factory=sessions)
         second = project(other)
         assert other.get(url).status_code == 404
         assert other.get(second + "/chunks/" + chunk).status_code == 404
