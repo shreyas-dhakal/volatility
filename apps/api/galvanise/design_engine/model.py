@@ -14,6 +14,10 @@ def reference_aliases(context):
             aliases[record["id"]] = f"{collection}_{i}"
             for j, operation in enumerate(record.get("operations", []), 1):
                 aliases[operation["id"]] = f"op_{i}_{j}"
+    for i, hint in enumerate(context.get("prior_ids", []), 1):
+        aliases.setdefault(hint["id"], f"prior_{i}")
+        for j, operation_id in enumerate(hint.get("operation_ids", []), 1):
+            aliases.setdefault(operation_id, f"prior_op_{i}_{j}")
     return aliases
 
 
