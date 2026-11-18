@@ -5,7 +5,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 vi.mock('@stylexjs/stylex',async original=>({...await original<object>(),create:(styles:Record<string,unknown>)=>Object.fromEntries(Object.keys(styles).map(k=>[k,{}]))}));
 import {ErrorNotice} from './workspace';
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
-describe('workspace notices',()=>{it('announces actionable errors',()=>{render(<ErrorNotice message="Set OPENAI_API_KEY on the API server."/>);expect(screen.getByRole('alert').textContent).toContain('Set OPENAI_API_KEY')})});
+describe('workspace notices',()=>{it('announces actionable errors',()=>{render(<ErrorNotice message="Set OPENAI_API_KEY on the API server."/>);expect(screen.getByText('Error')).toBeTruthy();expect(screen.getByRole('alert').textContent).toContain('Set OPENAI_API_KEY')})});
 describe('explicit sample workspace',()=>{
  it('loads a sample only after user action and supports Promise-returning browser scroll',async()=>{
  const {default:Page}=await import('./workspace');
@@ -80,4 +80,31 @@ it('offers connected repositories before a project exists and imports only the s
  fireEvent.click(repository);
  await screen.findByRole('heading',{name:'What is changing in your business?'});
  expect(opened).toBe(true);
+});
+
+it('loads the selected project’s chat without requesting the previous project’s conversation',async()=>{
+ const {default:Page}=await import('./workspace');
+ const projects=[{id:'alpha',name:'Alpha'},{id:'beta',name:'Beta'}];
+ const paths:string[]=[];
+ const fetcher=vi.fn(async(path:string)=>{
+   paths.push(path);
+   let body:unknown=[];
+   if(path==='/api/auth/me')body={id:'u',name:'Alex',github_connected:false};
+   if(path==='/api/projects')body=projects;
+   for(const project of projects){
+     if(path===`/api/projects/${project.id}/conversations`)body=[{id:'chat-'+project.id,title:project.name+' chat'}];
+   }
+   if(path==='/api/projects/beta/conversations/chat-alpha/messages'){
+     return Response.json({detail:'Conversation not found'},{status:404});
+   }
+   return Response.json(body);
+ });
+ vi.stubGlobal('fetch',fetcher);
+ render(<Page onSignOut={async()=>{}} accountControl={null}/>);
+ await waitFor(()=>expect(paths).toContain('/api/projects/alpha/conversations/chat-alpha/messages'));
+ fireEvent.click(screen.getByRole('combobox',{name:/Project/}));
+ fireEvent.click(await screen.findByRole('option',{name:'Beta'}));
+ await waitFor(()=>expect(paths).toContain('/api/projects/beta/conversations/chat-beta/messages'));
+ expect(paths).not.toContain('/api/projects/beta/conversations/chat-alpha/messages');
+ expect(screen.queryByText('Conversation not found')).toBeNull();
 });

@@ -80,17 +80,48 @@ function Workspace({onSignOut,accountControl}:AuthWiring){
  const [designRefresh,setDesignRefresh]=useState(0);
  const controller=useRef<AbortController|null>(null),end=useRef<HTMLDivElement|null>(null),createdConversation=useRef<string|null>(null); const project=projects.find(p=>p.id===projectId); const base=`/projects/${projectId}`;
  async function run(action:()=>Promise<unknown>){setError('');setBusy(true);try{await action()}catch(e){setError(e instanceof Error?e.message:'Something went wrong. Please retry.')}finally{setBusy(false)}}
- async function loadProjects(){const p=await request<Project[]>('/projects');setProjects(p);setProjectId(prev=>p.some(x=>x.id===prev)?prev:p[0]?.id||'')}
- async function refresh(){if(!projectId)return;const [r,so,j,d,g,c]=await Promise.all([request<Knowledge[]>(`${base}/records`),request<Source[]>(`${base}/sources`),request<Job[]>(`${base}/jobs`),request<Document[]>(`${base}/documents`),request<GraphSummary[]>(`${base}/graphs`),request<Conversation[]>(`${base}/conversations`)]);setRecords(r);setSources(so);setJobs(j);setDocuments(d);setGraphs(g);setConversations(c);setConversationId(prev=>prev===''||c.some(x=>x.id===prev)?prev:c[0]?.id||'')}
+ const activeProject=useRef({id:''});
+
+ function selectProject(id:string){
+  if(activeProject.current.id===id)return;
+  activeProject.current={id};
+  createdConversation.current=null;
+  setConversationId(null);setConversations([]);setMessages([]);setDraft('');
+  setRecords([]);setSources([]);setJobs([]);setDocuments([]);setGraphs([]);
+  setError('');setProjectId(id);
+ }
+ async function loadProjects(preferredId=activeProject.current.id){
+  const list=await request<Project[]>('/projects');
+  setProjects(list);
+  selectProject(list.some(p=>p.id===preferredId)?preferredId:list[0]?.id||'');
+ }
+ async function refresh(){
+  const selection=activeProject.current;
+  if(!projectId||selection.id!==projectId)return;
+  try{
+   const [r,so,j,d,g,c]=await Promise.all([
+    request<Knowledge[]>(`${base}/records`),request<Source[]>(`${base}/sources`),
+    request<Job[]>(`${base}/jobs`),request<Document[]>(`${base}/documents`),
+    request<GraphSummary[]>(`${base}/graphs`),request<Conversation[]>(`${base}/conversations`),
+   ]);
+   if(activeProject.current!==selection)return;
+   setRecords(r);setSources(so);setJobs(j);setDocuments(d);setGraphs(g);setConversations(c);
+   setConversationId(prev=>prev===''||c.some(x=>x.id===prev)?prev:c[0]?.id||'');
+  }catch(error){
+   if(activeProject.current===selection)throw error;
+  }
+ }
  useEffect(()=>{request<typeof health>('/health').then(setHealth).catch(()=>{});request<User>('/auth/me').then(async u=>{setUser(u);await loadProjects()}).catch(e=>{if(!(e instanceof ApiError&&e.status===401))setError(e.message)}).finally(()=>setReady(true));return()=>controller.current?.abort()},[]);
- useEffect(()=>{setMessages([]);setConversationId(null);setConversations([]);setDraft('');setRecords([]);if(projectId)run(refresh)},[projectId]);
+ useEffect(()=>{if(projectId)run(refresh)},[projectId]);
  useEffect(()=>{
   if(!projectId||!conversationId)return;
   if(createdConversation.current===conversationId){createdConversation.current=null;return}
   let current=true;
-  run(async()=>{
-   const history=await request<Message[]>(`${base}/conversations/${conversationId}/messages`);
-   if(current)setMessages(history);
+  const selection=activeProject.current;
+  request<Message[]>(`${base}/conversations/${conversationId}/messages`).then(history=>{
+   if(current&&activeProject.current===selection)setMessages(history);
+  }).catch(e=>{
+   if(current&&activeProject.current===selection)setError(e instanceof Error?e.message:'Could not load the conversation.');
   });
   return()=>{current=false};
  },[projectId,conversationId]);
@@ -142,7 +173,7 @@ function Workspace({onSignOut,accountControl}:AuthWiring){
  async function patch(record:Knowledge,change:Record<string,unknown>){await request(`${base}/records/${record.id}`,{method:'PATCH',body:JSON.stringify({...change,expected_version:record.version})});await refresh()}
  const choose=(v:View)=>{setView(v);setNewProject(false);setShowNav(false)};
  if(!ready)return <VStack padding={10}><Text>Opening your workspace…</Text></VStack>;
- if(!user)return <VStack padding={6} gap={4}><Heading level={1}>Your account needs attention</Heading><Text role="alert">{error||'Your profile could not be opened. Sign in again or request account recovery.'}</Text><Button label="Try again" onClick={()=>location.reload()}/><Button label="Sign out" onClick={()=>void onSignOut()}/></VStack>;
+ if(!user)return <VStack padding={6} gap={4}><Heading level={1}>Error</Heading><Text role="alert">{error||'Your profile could not be opened. Sign in again or request account recovery.'}</Text><Button label="Try again" onClick={()=>location.reload()}/><Button label="Sign out" onClick={()=>void onSignOut()}/></VStack>;
  const isChat=Boolean(project)&&view==='Chat'&&!newProject;
  const emptyChat=conversationId===''&&!messages.length&&!streaming;
  const currentConversation=conversations.find(conversation=>conversation.id===conversationId);
@@ -159,10 +190,10 @@ function Workspace({onSignOut,accountControl}:AuthWiring){
    <HStack gap={1} vAlign="end">
     <VStack xstyle={s.identity}>
      <Selector label="Project" isDisabled={streaming||busy} value={projectId} onChange={value=>{
-      if(!value.startsWith('github:')){setProjectId(value);return}
+      if(!value.startsWith('github:')){selectProject(value);return}
       void run(async()=>{
        const opened=await post<Project>('/projects/github',{full_name:value.slice(7)});
-       await loadProjects();setProjectId(opened.id);choose('Chat');
+       await loadProjects(opened.id);choose('Chat');
       });
      }} options={[
       ...projects.map(p=>({value:p.id,label:displayText(p.name)})),
@@ -207,7 +238,7 @@ function Workspace({onSignOut,accountControl}:AuthWiring){
   </HStack>}
  </HStack>
  {error&&<VStack padding={4} hAlign="start"><ErrorNotice message={error}/><Button label="Dismiss" variant="ghost" size="sm" onClick={()=>setError('')}/></VStack>}
- {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects();setProjectId(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={6} xstyle={s.empty} gap={4} hAlign="center" vAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">{user.github_connected?'Choose a repository from the Project menu or start a new project.':'Tell us what you want to improve. You can add files and code later.'}</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects();setProjectId(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:isChat?<EngineSession key={base} base={base} streaming={streaming} refreshKey={designRefresh}><VStack xstyle={s.chatContent} gap={0} paddingInline={5}>
+ {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={6} xstyle={s.empty} gap={4} hAlign="center" vAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">{user.github_connected?'Choose a repository from the Project menu or start a new project.':'Tell us what you want to improve. You can add files and code later.'}</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:isChat?<EngineSession key={base} base={base} streaming={streaming} refreshKey={designRefresh}><VStack xstyle={s.chatContent} gap={0} paddingInline={5}>
  {!emptyChat&&<VStack xstyle={s.chatContent} paddingBlock={6}>
    <VStack xstyle={s.measure} gap={6}>
     {messages.map(message=>{
@@ -254,7 +285,7 @@ function Workspace({onSignOut,accountControl}:AuthWiring){
  </VStack></VStack>}
  </VStack></HStack></VStack>
 }
-export function ErrorNotice({message}:{message:string}){return <VStack role="alert" padding={4} xstyle={s.error}><HStack gap={2} vAlign="center"><AppIcon icon={TriangleAlert} color="error"/><Text weight="semibold">Something needs attention</Text></HStack><Text>{message}</Text></VStack>}
+export function ErrorNotice({message}:{message:string}){return <VStack role="alert" padding={4} xstyle={s.error}><HStack gap={2} vAlign="center"><AppIcon icon={TriangleAlert} color="error"/><Text weight="semibold">Error</Text></HStack><Text>{message}</Text></VStack>}
 function ProjectForm({save,cancel,busy}:{save:(data:Record<string,string>)=>void;cancel:()=>void;busy:boolean}){const [name,setName]=useState(''),[description,setDescription]=useState(''),[objective,setObjective]=useState(''),[type,setType]=useState('existing');return <VStack as="form" xstyle={s.measure} gap={5} onSubmit={(e:React.FormEvent)=>{e.preventDefault();save({name,description,objective,system_type:type})}}><Heading level={1}>Create a project</Heading><Text color="secondary">What are you working on? You can connect code later.</Text><TextInput label="Project name" value={name} onChange={setName} isRequired/><TextArea label="Short description" value={description} onChange={setDescription}/><Selector label="System" value={type} onChange={setType} options={[{value:'existing',label:'An existing system'},{value:'new',label:'A new system'}]}/><TextArea label="What do you want to improve?" value={objective} onChange={setObjective} placeholder="For example, make it easier to add a new supplier."/><HStack gap={3}><Button label="Create project" icon={<AppIcon icon={Plus} color="inherit"/>} type="submit" variant="primary" isLoading={busy} isDisabled={!name.trim()}/><Button label="Cancel" onClick={cancel}/></HStack></VStack>}
 function Context({title,records,open}:{title:string;records:Knowledge[];open:()=>void}){return <VStack gap={3}><HStack hAlign="between" vAlign="center"><Text weight="semibold">{title}</Text><Button label="View" icon={<AppIcon icon={ArrowRight} color="blue"/>} size="sm" variant="ghost" onClick={open}/></HStack>{records.length?records.map(r=><VStack key={r.id} gap={1}><Text>{r.title}</Text><Text type="supporting" color="secondary">{evidenceLabel(r.evidence_status)}</Text></VStack>):<Text type="supporting" color="secondary">No findings yet.</Text>}</VStack>}
 function Sources({base,user,repos,sources,documents,jobs,graphs,busy,run,refresh,githubAvailable}:{repos:GitHubRepo[];githubAvailable:boolean;base:string;user:User;sources:Source[];documents:Document[];jobs:Job[];graphs:GraphSummary[];busy:boolean;run:(fn:()=>Promise<unknown>)=>Promise<void>;refresh:()=>Promise<void>}){
