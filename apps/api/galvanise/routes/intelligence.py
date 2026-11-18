@@ -9,7 +9,8 @@ from galvanise.dependencies import get_current_user, require_project
 from galvanise.models import User, Conversation, TechnicalGraph, KnowledgeRecord
 from galvanise.agents.client import configured_client, structured
 from galvanise.agents.schemas import Extraction, Candidates, Mappings
-from galvanise.agents.chat import stream_chat
+from galvanise.agents.chat import stream_chat, event
+from galvanise.agents import design_chat
 from galvanise.services.knowledge import bounded_context, save_proposals, records_for, serialize, validate_references, evidence_ids
 from galvanise.graph.core import normalize, GraphIndex, evaluate
 
@@ -56,8 +57,21 @@ async def chat(project_id:str,conversation_id:str,body:ChatInput,request:Request
     require_project(project_id,db,user)
     conversation=db.scalar(select(Conversation).where(Conversation.id==conversation_id,Conversation.project_id==project_id))
     if not conversation: raise HTTPException(404,'Conversation not found')
-    client=configured_client()
-    return StreamingResponse(stream_chat(client,db,project_id,conversation_id,user,body.content,request),media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
+    from galvanise.design_engine.service import current_revision
+
+    revision = current_revision(db, project_id, user)
+    operation = design_chat.command(body.content)
+    if operation:
+        text, message_id, metadata = design_chat.perform(
+            operation, db, project_id, user, conversation_id, body.content, revision
+        )
+        frames = iter([event("design", metadata), event("delta", {"text": text}),
+                       event("done", {"message_id": message_id})])
+    else:
+        client = configured_client()
+        frames = stream_chat(client, db, project_id, conversation_id, user, body.content,
+                             request, revision=None if design_chat.requests_existing_workflow(body.content) else revision)
+    return StreamingResponse(frames,media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
 
 @router.post('/projects/{project_id}/analyse')

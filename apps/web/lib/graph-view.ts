@@ -10,7 +10,7 @@ export function edgeEvidence(metadata:Record<string,unknown>={}){
  const inferred=['ai_inferred','hypothesis','inferred'].includes(declared)||upstream.includes('infer')||upstream.includes('hypothes')||typeof confidence==='number'&&confidence<1;
  return {dashed:!verified,label:verified?declared.replaceAll('_',' '):inferred?'inferred - unverified':'upstream claim - unverified',confidence};
 }
-function layeredPositions(nodes:GraphNode[],edges:GraphData['edges']){
+export function layeredPositions(nodes:{id:string}[],edges:{source:string;target:string}[]){
  const ids=new Set(nodes.map(n=>n.id)),indegree=new Map(nodes.map(n=>[n.id,0])),rank=new Map(nodes.map(n=>[n.id,0]));
  for(const e of edges)if(ids.has(e.source)&&ids.has(e.target))indegree.set(e.target,(indegree.get(e.target)||0)+1);
  const queue=nodes.filter(n=>indegree.get(n.id)===0).map(n=>n.id),seen=new Set<string>();

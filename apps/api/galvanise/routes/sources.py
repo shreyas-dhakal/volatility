@@ -13,7 +13,7 @@ from galvanise.dependencies import get_current_user, require_project
 from galvanise.integrations.github import account_token, repositories
 from galvanise.models import ConnectedSource, IngestionJob, SourceDocument, User
 from galvanise.security import encrypt
-from galvanise.services.ingestion import ALLOWED
+from galvanise.services.ingestion import ALLOWED, relative_path
 
 router = APIRouter(prefix="/api/projects/{project_id}")
 
@@ -57,9 +57,12 @@ async def upload(
     user: User = Depends(get_current_user),
 ):
     require_project(project_id, db, user)
-    name = PurePosixPath(file.filename or "document").name[:255]
+    name = relative_path(file.filename or "document")[:1024]
     if PurePosixPath(name).suffix.lower() not in ALLOWED:
-        raise HTTPException(415, "Supported files: TXT, MD, PDF, DOCX")
+        raise HTTPException(
+            415,
+            "Supported uploads include text, source code, PDF, DOCX and ZIP projects",
+        )
     data = await file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(413, "File exceeds upload size limit")
