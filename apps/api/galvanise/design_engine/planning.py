@@ -448,11 +448,45 @@ def _schedule(run, graph, activities, people, start, efforts, lengths):
         run["total_cost"] = _cost_number(sum(Decimal(str(c)) for c in costs))
 
 
+def _check_activity_links(snapshot, activities):
+    """Edited activities can refer back to records and evidence in this revision."""
+    records = [
+        row
+        for field, values in snapshot.items()
+        if field != "manifest" and isinstance(values, list)
+        for row in values
+        if isinstance(row, dict) and "id" in row
+    ]
+    known = {record["id"] for record in records}
+    known.update(
+        op["id"] for c in snapshot.get("contracts", []) for op in c["operations"]
+    )
+    excerpts = {
+        (cite["chunk_id"], " ".join(cite["excerpt"].split()))
+        for row in records
+        for cite in row.get("evidence", [])
+    }
+    for activity in activities:
+        if set(activity.related_ids) - known:
+            raise ValueError(
+                f"Activity {activity.id} links to an entity outside this revision"
+            )
+        if any(
+            (cite.chunk_id, " ".join(cite.excerpt.split())) not in excerpts
+            for cite in activity.sources
+        ):
+            raise ValueError(
+                f"Activity {activity.id} has evidence outside this revision"
+            )
+
+
 def plan(snapshot_dict, planning_inputs_dict):
     inputs = Inputs.model_validate(planning_inputs_dict)
     rows = (
         inputs.activities if inputs.activities is not None else _generate(snapshot_dict)
     )
+    if inputs.activities is not None:
+        _check_activity_links(snapshot_dict, rows)
     activities = _indexed(sorted(rows, key=lambda a: a.id), "activity")
     graph = _graph(activities)
     rosters = _indexed(inputs.rosters, "roster")

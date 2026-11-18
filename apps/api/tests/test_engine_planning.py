@@ -65,6 +65,7 @@ def test_acceptance_schedules(planning_inputs):
 def test_generated_work_uses_contracts_for_parallel_implementation():
     evidence = [{"chunk_id": "chunk-1", "excerpt": "Charges vary"}]
     snapshot = {
+        "volatilities": [{"id": "v", "decision": "Tax policy", "evidence": evidence}],
         "components": [
             {"id": "a", "name": "Invoices", "owns": [], "use_case_ids": ["invoice"]},
             {"id": "b", "name": "Tax", "owns": ["v"], "evidence": evidence},
@@ -357,3 +358,19 @@ def test_incomplete_form_identifies_missing_commitments_and_preserves_assumption
         "rosters.base.people.p.commitments.0.end",
         "rosters.base.people.p.commitments.0.fraction",
     }
+
+
+def test_edited_activity_links_must_belong_to_planned_revision():
+    source = {"chunk_id": "c", "excerpt": "Daily cap"}
+    snapshot = {"volatilities": [{"id": "cap", "evidence": [source]}]}
+    draft = activity("a", 1, related_ids=["cap"], sources=[source])
+    assert plan(snapshot, {"activities": [draft]})["activities"][0]["related_ids"] == [
+        "cap"
+    ]
+    with pytest.raises(ValueError, match="outside this revision"):
+        plan(snapshot, {"activities": [dict(draft, related_ids=["another-project"])]})
+    with pytest.raises(ValueError, match="evidence outside"):
+        plan(
+            snapshot,
+            {"activities": [dict(draft, sources=[dict(source, excerpt="Invented")])]},
+        )
