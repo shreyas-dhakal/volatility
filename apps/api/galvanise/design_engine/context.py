@@ -9,6 +9,7 @@ from pydantic import create_model
 
 from .records import COLLECTIONS
 from .schemas import Model, Snapshot, Text
+from .validation import record_citations
 
 
 class Chunk(Model):
@@ -20,6 +21,10 @@ class Chunk(Model):
 class Correction(Model):
     chunk_id: Text
     text: Text
+    decision_id: Text | None = None
+    question_id: Text | None = None
+    question: Text | None = None
+    base_revision_id: Text | None = None
 
 
 class StageInput(Model):
@@ -101,7 +106,7 @@ def relevant_chunks(stage, chunks, snapshot, correction):
             for value in row.values():
                 if isinstance(value, str):
                     query.update(terms(value))
-            grounded.update(cite["chunk_id"] for cite in row["evidence"])
+            grounded.update(cite["chunk_id"] for cite in record_citations(row))
     tokens = [terms(c["text"]) for c in chunks]
     frequency = Counter(t for words in tokens for t in words)
     weights = {t: log(1 + len(chunks) / (1 + frequency[t])) for t in query}

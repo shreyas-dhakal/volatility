@@ -18,5 +18,5 @@ export default function ClerkWorkspace(){
  if(!isLoaded)return <VStack padding={6}><Text>Checking your session…</Text></VStack>;
  if(!isSignedIn||!userId)return <VStack padding={6} gap={4}><Heading level={1}>Sign in to Galvanise</Heading><Button href="/sign-in" label="Sign in"/><Button href="/sign-up" label="Create account"/></VStack>;
  if(readyFor!==userId)return <VStack padding={6}><Text>Opening your workspace…</Text></VStack>;
- return <Workspace key={userId} clerkMode onSignOut={()=>signOut({redirectUrl:'/sign-in'})} accountControl={<UserButton/>}/>;
+ return <Workspace key={userId} onSignOut={()=>signOut({redirectUrl:'/sign-in'})} accountControl={<UserButton/>}/>;
 }

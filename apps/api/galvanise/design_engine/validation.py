@@ -17,6 +17,13 @@ def user_message(chunk):
     )
 
 
+def record_citations(row):
+    yield from row["evidence"]
+    yield from (row.get("explanation") or {}).get("evidence", [])
+    for answer in row.get("answers", []):
+        yield answer["evidence"]
+
+
 def check_evidence(changes, chunks):
     """Validate only the text actually supplied to this call (including partial chunks)."""
     allowed = defaultdict(list)
@@ -27,21 +34,21 @@ def check_evidence(changes, chunks):
         if kind == "retire":
             continue
         for row in rows:
-            citations = row["evidence"]
-            for citation in citations:
+            subject = row.get("id") or row.get("volatility_id")
+            for citation in record_citations(row):
                 source = citation["chunk_id"]
                 text = normalized(citation["excerpt"])
                 if not text or not any(text in excerpt for excerpt in allowed[source]):
                     raise ValueError(
-                        f"{kind}/{row['id']} has an unknown chunk or inexact excerpt: {source}."
+                        f"{kind}/{subject} has an unknown chunk or inexact excerpt: {source}."
                     )
             if row.get("status") == "user_confirmed" and not any(
-                c["chunk_id"] in users for c in citations
+                c["chunk_id"] in users for c in row["evidence"]
             ):
                 raise ValueError(
                     f"Decision {row['id']} requires an actual user-message citation."
                 )
-            if not citations and (
+            if not row["evidence"] and (
                 kind == "actors"
                 or row.get("basis") in {"observed", "stated_requirement"}
                 or row.get("status") in {"observed", "disputed"}
@@ -119,6 +126,19 @@ def check_links(snapshot, stage):
             raise ValueError(
                 f"Decision {decision['id']} needs one primary owner or an explicit ownership_gap."
             )
+        explanation = decision.get("explanation")
+        if primary and not explanation:
+            raise ValueError(
+                f"Missing boundary explanation for assigned decision {decision['id']}."
+            )
+        if explanation and primary != [explanation["owner_id"]]:
+            raise ValueError(
+                f"Explanation owner disagrees with ownership of {decision['id']}."
+            )
+        if explanation and decision["evidence"] and not explanation["evidence"]:
+            raise ValueError(
+                f"Cite the supporting excerpt for explanation {decision['id']}."
+            )
     operation_owner = {}
     for contract in snapshot["contracts"]:
         ref(contract["owner_id"], "components", contract["id"])
@@ -128,10 +148,12 @@ def check_links(snapshot, stage):
     for dep in dependencies.values():
         for field in ("caller_id", "callee_id"):
             ref(dep[field], "components", dep["id"])
-        if (
-            dep["caller_id"] == dep["callee_id"]
-            or operation_owner.get(dep["operation_id"]) != dep["callee_id"]
-        ):
+        if dep["caller_id"] == dep["callee_id"]:
+            raise ValueError(
+                f"Remove all self-dependencies. {dep['caller_id']} calls itself in {dep['id']}. "
+                "Keep local operations on their contracts and trace them with dependency_id=null."
+            )
+        if operation_owner.get(dep["operation_id"]) != dep["callee_id"]:
             raise ValueError(
                 f"Dependency {dep['id']} must call an operation owned by a different callee."
             )
@@ -196,10 +218,15 @@ def check_links(snapshot, stage):
             raise ValueError(
                 f"Probe {probe['id']} predicted owners disagree with ownership of {decision}."
             )
-        for component in probe["predicted_edit_ids"] + [
+        affected = set(probe["predicted_edit_ids"]) | {
             leak["component_id"] for leak in probe["leaks"]
-        ]:
+        }
+        for component in affected:
             ref(component, "components", probe["id"])
+        for consumer in probe.get("consumers", []):
+            ref(consumer["component_id"], "components", probe["id"])
+            if consumer["component_id"] in affected:
+                raise ValueError("An unchanged consumer cannot also require an edit.")
 
 
 def review_reasons(before, after):
@@ -219,7 +246,7 @@ def review_reasons(before, after):
     }
     if changed - explained:
         raise ValueError(
-            f"Explain each material review change in a revision finding targeting its ID: {sorted(changed - explained)}."
+            f"Explain each material review change in a revision finding with code exactly 'revision' and target_ids containing its ID: {sorted(changed - explained)}."
         )
 
 

@@ -5,10 +5,17 @@ all generated citations use real, project-scoped chunk IDs.
 """
 
 PARKING_POLICY = "North charges hourly while South charges per visit."
+COMMON = "Every site uses the same hourly formula. North sets its rate to two credits and South to five."
+FORMULA = "Each site chooses its own charging formula."
+AMBIGUOUS = "North charges two credits and South charges five credits."
+QUESTION = (
+    "Can each site choose its own charging formula, or does it only set the rate?"
+)
+UNSURE = "We are unsure whether each site chooses the formula."
 GATES = "North uses a LiftCo gate and South uses a PivotWorks gate."
 EXIT = "A driver pays the charge, receives a receipt and exits through the gate."
-RECEIPT = "The receipt prints the amount supplied by pricing."
-DUPLICATE = "The receipt independently calculates the charge."
+RECEIPT = "def receipt(amount):\n    return print_amount(amount)"
+DUPLICATE = "def receipt(site, hours):\n    charge = hours * 2 if site == 'North' else 5\n    return print_amount(charge)"
 GATE_FAILURE = "If the gate fails to open, the visit stays open."
 PARKING_TEXT = f"{EXIT}\n{PARKING_POLICY}\n{GATES}\n{RECEIPT}\n{GATE_FAILURE}"
 DUPLICATE_RECEIPT_TEXT = PARKING_TEXT.replace(RECEIPT, DUPLICATE)
@@ -55,7 +62,11 @@ class ParkingModel:
             return dict(id=identity, evidence=evidence, **fields)
 
         code_only = bool(cite("charge = 500")) and not cite(PARKING_POLICY)
-        price_evidence = cite("charge = 500" if code_only else PARKING_POLICY)
+        policy = next(
+            (item for item in (COMMON, FORMULA, AMBIGUOUS) if cite(item)),
+            PARKING_POLICY,
+        )
+        price_evidence = cite("charge = 500" if code_only else policy)
         case_evidence = cite("def exit_parking(ticket):" if code_only else EXIT)
         gate_evidence = cite("open_gate(ticket)" if code_only else GATES)
         receipt_evidence = cite(
@@ -63,6 +74,13 @@ class ParkingModel:
         ) or cite(DUPLICATE)
         correction = context.get("correction")
         changed = bool(correction and "one tariff" in correction["text"].lower())
+        answer = (
+            correction["text"] if correction and correction.get("question_id") else None
+        )
+        if answer:
+            price_evidence += cite(answer)
+        uncertain = policy == AMBIGUOUS and answer not in (COMMON, FORMULA)
+        configure = policy == COMMON or policy == AMBIGUOUS and answer != FORMULA
         actor = existing("actors", "name", "Driver", "driver", case_evidence)
         case = existing("use_cases", "name", "Exit parking", "exit", case_evidence)
         price = existing(
@@ -135,6 +153,7 @@ class ParkingModel:
                     )
                 ]
             }
+        question = existing("questions", "question", QUESTION, "formula-question")
         if stage == "volatility":
             return {
                 "volatilities": [
@@ -147,15 +166,20 @@ class ParkingModel:
                         if changed
                         else "Tariff terms may differ by site.",
                         status="user_confirmed"
-                        if changed
+                        if changed or answer in (COMMON, FORMULA)
                         else "hypothesis"
                         if code_only
                         else "observed",
                         alternatives=[
-                            {"description": "Hourly fee", "hypothetical": code_only},
+                            {
+                                "description": "Hourly fee",
+                                "hypothetical": not (
+                                    cite(PARKING_POLICY) or cite(COMMON)
+                                ),
+                            },
                             {
                                 "description": "Fixed fee per visit",
-                                "hypothetical": False,
+                                "hypothetical": not cite(PARKING_POLICY),
                             },
                         ],
                     ),
@@ -172,13 +196,36 @@ class ParkingModel:
                         ],
                     ),
                 ],
-                "questions": [],
+                "questions": [
+                    entity(
+                        question,
+                        price_evidence,
+                        question=QUESTION,
+                        alternatives=[COMMON, FORMULA, UNSURE],
+                        target_ids=[price],
+                        decision_impact="Determines whether pricing needs a separate calculation boundary.",
+                    )
+                ]
+                if uncertain
+                else [],
+                "retire": [
+                    {
+                        "id": question,
+                        "reason": "The operator specified who chooses the formula.",
+                    }
+                ]
+                if answer and not uncertain and prior.get("questions")
+                else [],
             }
         owners = [
             ("Pricing", pricing, "price-op", "Quote charge", "Final amount"),
             ("Receipt", receipt, "receipt-op", "Issue receipt", "Issued receipt"),
             ("Gate access", gate, "gate-op", "Open gate", "Gate state"),
         ]
+
+        if configure:
+            owners = owners[1:]
+        price_owner = manager if configure else pricing
 
         def operation(owner_id, fallback):
             prior_ops = [
@@ -209,7 +256,7 @@ class ParkingModel:
                     "Exit coordinator",
                     manager,
                     "manager",
-                    [],
+                    [price] if configure else [],
                     "Coordinate payment, receipt, and exit.",
                     case_evidence,
                 ),
@@ -240,6 +287,8 @@ class ParkingModel:
                     gate_evidence,
                 ),
             ]:
+                if configure and identity == pricing:
+                    continue
                 components.append(
                     entity(
                         identity,
@@ -250,7 +299,8 @@ class ParkingModel:
                         responsibility=description,
                         rationale=description,
                         use_case_ids=[case],
-                        provisional=code_only and bool(owns),
+                        provisional=(code_only or uncertain and identity == price_owner)
+                        and bool(owns),
                     )
                 )
             contracts = []
@@ -290,7 +340,48 @@ class ParkingModel:
                         reason="The exit requires " + output.lower() + ".",
                     )
                 )
+            established = price_evidence[0]["excerpt"]
+            if changed or answer in (COMMON, FORMULA):
+                established = correction["text"]
+            elif uncertain:
+                established = "The listed amounts differ."
             return {
+                "explanations": [
+                    {
+                        "volatility_id": price,
+                        "owner_id": price_owner,
+                        "evidence": cite(correction["text"])
+                        if changed
+                        else price_evidence,
+                        "established": established,
+                        "uncertainty": "Whether each site chooses the formula."
+                        if uncertain
+                        else None,
+                        "approach": "Configure the site rate"
+                        if configure
+                        else "Encapsulate the formula in Pricing",
+                        "rationale": "The current owner can calculate charges with one formula and a site rate."
+                        if configure
+                        else "Callers need only the final amount while pricing selects the calculation.",
+                        "reconsider_when": "A site needs its own charging formula."
+                        if configure
+                        else "Every site adopts a common formula.",
+                        "hypothetical_alternative": "Give pricing its own calculation boundary."
+                        if configure
+                        else "Keep a configurable rate in the exit coordinator.",
+                    },
+                    {
+                        "volatility_id": vendor,
+                        "owner_id": gate,
+                        "evidence": gate_evidence,
+                        "established": gate_evidence[0]["excerpt"],
+                        "uncertainty": None,
+                        "approach": "Adapt the gate protocol",
+                        "rationale": "Callers need only the outcome of opening the gate.",
+                        "reconsider_when": "All gates expose the same stable protocol.",
+                        "hypothetical_alternative": None,
+                    },
+                ],
                 "components": components,
                 "contracts": contracts,
                 "dependencies": deps,
@@ -310,6 +401,20 @@ class ParkingModel:
                 }
                 for _, owner, fallback, action, outcome in owners
             ]
+            if configure:
+                steps.insert(
+                    0,
+                    {
+                        "caller_id": manager,
+                        "callee_id": manager,
+                        "operation_id": None,
+                        "dependency_id": None,
+                        "coverage_gap": None,
+                        "description": "Apply the configured site rate.",
+                        "outcome": "Final amount",
+                        "path": "main",
+                    },
+                )
             if not code_only:
                 steps.append(
                     steps[-1] | {"path": GATE_FAILURE, "outcome": "Visit stays open"}
@@ -327,8 +432,18 @@ class ParkingModel:
                 receipt_evidence,
                 volatility_id=price,
                 change="Introduce a weekend cap.",
-                predicted_owner_ids=[pricing],
-                predicted_edit_ids=[pricing, receipt] if duplicate else [pricing],
+                predicted_owner_ids=[price_owner],
+                predicted_edit_ids=[price_owner, receipt]
+                if duplicate
+                else [price_owner],
+                consumers=[]
+                if duplicate
+                else [
+                    {
+                        "component_id": receipt,
+                        "reason": "The receipt prints the supplied amount; the weekend cap changes only the calculation.",
+                    }
+                ],
                 leaks=[
                     {"component_id": receipt, "reason": "Receipt computes the charge."}
                 ]
@@ -353,7 +468,7 @@ class ParkingModel:
                         cite(DUPLICATE),
                         code="duplicate_knowledge",
                         severity="warning",
-                        target_ids=[receipt, pricing],
+                        target_ids=[price, receipt, price_owner],
                         message="Receipt independently calculates the charge in the current implementation.",
                     )
                 ]
@@ -367,6 +482,7 @@ class ParkingModel:
             }
         if stage == "review":
             return {
+                "explanations": [],
                 "components": [],
                 "contracts": [],
                 "dependencies": [],

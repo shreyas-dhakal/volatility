@@ -1,5 +1,5 @@
 import os
-os.environ.update(DATABASE_URL='sqlite://',APP_ENV='test',AUTH_SECRET='test-secret-that-is-at-least-32-characters',AUTO_CREATE_TABLES='true')
+os.environ.update(DATABASE_URL='sqlite://',APP_ENV='test',SOURCE_TOKEN_ENCRYPTION_KEY='test-source-token-encryption-key',AUTO_CREATE_TABLES='true')
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -13,6 +13,7 @@ from galvanise.agents.schemas import Extraction
 from galvanise.agents.client import structured
 from galvanise.agents.tools import invoke
 from galvanise.services.knowledge import save_proposals
+from auth_helpers import authenticate_as, sign_out_test_user
 
 
 def setup_function():
@@ -20,7 +21,7 @@ def setup_function():
 
 
 def create(c):
-    assert c.post('/api/auth/register',json={'email':'intel@example.com','password':'long-password-123','name':'Owner'}).status_code==200
+    authenticate_as(c, 'intel@example.com', 'Owner')
     response=c.post('/api/projects/demo');assert response.status_code==200,response.text
     return response.json()['id']
 
@@ -33,9 +34,9 @@ def test_demo_is_explicit_synthetic_and_graph_routes_authorized():
         assert c.get(f'/api/projects/{pid}/graphs/{gid}/paths',params={'source':'orders','target':'supplier-client'}).json()['paths']==[['orders','purchasing','supplier-client']]
         assert c.post(f'/api/projects/{pid}/graphs/import',files={'file':('bad.json',b'{"nodes":[],"links":[{"source":[],"target":{}}]}')}).status_code==422
         assert c.post(f'/api/projects/{pid}/evaluate',json={'scenario':'Add supplier','graph_id':gid,'node_ids':['purchasing']}).json()['mode']=='structural'
-        c.post('/api/auth/logout')
+        sign_out_test_user(c)
         assert c.get(f'/api/projects/{pid}/graphs').status_code==401
-        c.post('/api/auth/register',json={'email':'other@example.com','password':'long-password-123','name':'Other'})
+        authenticate_as(c, 'other@example.com', 'Other')
         assert c.get(f'/api/projects/{pid}/graphs').status_code==404
 
 

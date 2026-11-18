@@ -18,6 +18,7 @@ from parking_model import (
 from galvanise.database import Base, engine
 from galvanise.main import app
 from galvanise.services.ingestion import process_next_job
+from auth_helpers import authenticate_as
 
 
 def run_design_worker():
@@ -31,17 +32,8 @@ def payload(response):
     return response.json()
 
 
-def register(client, email):
-    return payload(
-        client.post(
-            "/api/auth/register",
-            json={
-                "email": email,
-                "password": "long-password-123",
-                "name": "Parking operator",
-            },
-        )
-    )
+def authenticate(client, email):
+    return authenticate_as(client, email, "Parking operator")
 
 
 def create_project(client):
@@ -116,7 +108,7 @@ def synthetic_project():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with TestClient(app) as client:
-        register(client, "parking@example.test")
+        authenticate(client, "parking@example.test")
         yield create_project(client)
 
 
@@ -247,6 +239,7 @@ def test_c_weekend_cap_distinguishes_rule_owner_and_consumer(
             for step in walk["steps"]
         )
         assert cap["predicted_edit_ids"] == [pricing["id"]]
+        assert [c["component_id"] for c in cap["consumers"]] == [receipt["id"]]
         assert not duplicate_findings
 
 
@@ -385,7 +378,7 @@ def test_f_idempotent_request_retry_and_reload(
     published = project.overview()
     assert published["revision"] and published["run"]["id"] == submitted["id"]
     assert project.analyze(upload)["id"] == submitted["id"]
-    with TestClient(app, cookies=project.client.cookies) as reloaded:
+    with TestClient(app, headers={"x-test-user": project.client.headers["x-test-user"]}) as reloaded:
         assert payload(reloaded.get(project.design)) == published
 
 
@@ -441,7 +434,7 @@ def test_f_excerpt_requires_project_and_owner(parking_project, parking_model):
     original = project.chunk(ref)
     sibling = create_project(project.client)
     with TestClient(app) as outsider:
-        register(outsider, "outsider@example.test")
+        authenticate(outsider, "outsider@example.test")
         outside = create_project(outsider)
         for client, design in (
             (outsider, project.design),
@@ -600,3 +593,64 @@ def test_overlapping_selection_retains_grounded_ids_only(
         assert {r["id"] for r in view["revision"]["snapshot"][field]} == {
             r["id"] for r in base["snapshot"][field]
         }, field
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Every site uses the same hourly formula. North sets its rate to two credits and South to five.",
+        "Each site chooses its own charging formula.",
+        "We are unsure whether each site chooses the formula.",
+    ],
+)
+def test_answer_is_bound_to_the_base_question_and_persisted(
+    parking_project, parking_model, answer
+):
+    from parking_model import AMBIGUOUS, COMMON, FORMULA, PARKING_POLICY
+
+    project = parking_project
+    base = project.publish(text=PARKING_TEXT.replace(PARKING_POLICY, AMBIGUOUS))
+    decision, gate = base["snapshot"]["volatilities"]
+    question = base["snapshot"]["questions"][0]
+    body = {
+        "base_revision_id": base["id"],
+        "question_id": question["id"],
+        "decision_id": decision["id"],
+        "answer": answer,
+        "idempotency_key": "answer",
+    }
+
+    def submit(**changes):
+        return project.client.post(f"{project.design}/revise", json=body | changes)
+
+    assert submit(decision_id=gate["id"]).status_code == 422
+    assert submit(question_id="missing").status_code == 422
+    queued = payload(submit())
+    assert payload(submit())["id"] == queued["id"]
+    assert submit(answer="Different answer").status_code == 409
+    run_design_worker()
+    view = project.overview()
+    assert view["run"]["status"] == "completed", view["run"]
+    revised = view["revision"]
+    current = revised["snapshot"]["volatilities"][0]
+    assert (
+        current["id"] == decision["id"] and revised["parent_revision_id"] == base["id"]
+    )
+    saved = current["answers"][0]
+    assert (
+        saved["question_id"] == question["id"]
+        and saved["base_revision_id"] == base["id"]
+    )
+    assert project.chunk(saved["evidence"])["text"] == answer
+    assert (
+        current["explanation"]["owner_id"] != decision["explanation"]["owner_id"]
+    ) == (answer == FORMULA)
+    assert bool(current["explanation"]["uncertainty"]) == (
+        answer not in (COMMON, FORMULA)
+    )
+    assert gate == revised["snapshot"]["volatilities"][1]
+    assert payload(submit())["id"] == queued["id"]
+    assert submit(idempotency_key="late").status_code == 409
+    assert (
+        payload(project.client.get(f"{project.design}/revisions/{base['id']}")) == base
+    )

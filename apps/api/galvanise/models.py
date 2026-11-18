@@ -33,7 +33,6 @@ class User(Identity, Base):
     __tablename__ = "users"
     email: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String)
-    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     clerk_user_id: Mapped[str | None] = mapped_column(
         String, nullable=True, unique=True
     )
@@ -44,13 +43,6 @@ class Account(Identity, Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     github_id: Mapped[str] = mapped_column(String, unique=True)
     token_ciphertext: Mapped[str] = mapped_column(Text)
-
-
-class Session(Identity, Base):
-    __tablename__ = "sessions"
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    token_hash: Mapped[str] = mapped_column(String, unique=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class OAuthState(Identity, Base):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
 import shutil
 import signal
 import socket
@@ -42,11 +41,10 @@ def main() -> None:
     config = ROOT / '.env'
     if not config.exists():
         content = (ROOT / '.env.example').read_text()
-        content = '\n'.join('AUTH_SECRET=' + secrets.token_urlsafe(48) if line.startswith('AUTH_SECRET=') else line
-                            for line in content.splitlines()) + '\n'
+        content = '\n'.join(content.splitlines()) + '\n'
         config.write_text(content)
         config.chmod(0o600)
-        print('Created .env with a stable random authentication secret. Configure OpenAI/GitHub there to enable them.', flush=True)
+        print('Created .env. Configure Clerk, OpenAI, and GitHub there to enable them.', flush=True)
     web_url = env_value('WEB_URL', 'http://localhost:3000')
     address = urlparse(web_url)
     if address.hostname not in ('localhost', '127.0.0.1') or address.scheme != 'http':

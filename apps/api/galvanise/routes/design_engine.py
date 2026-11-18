@@ -28,6 +28,14 @@ class Revise(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=256)
 
 
+class QuestionAnswer(BaseModel):
+    base_revision_id: str
+    question_id: str
+    decision_id: str
+    answer: str = Field(min_length=1, max_length=2400)
+    idempotency_key: str = Field(min_length=1, max_length=256)
+
+
 class Plan(BaseModel):
     revision_id: str
     planning_inputs: dict
@@ -54,7 +62,11 @@ def analyze(project_id: str, body: Analyze, db: Database, user: CurrentUser):
 
 
 @router.post("/revise", status_code=202)
-def revise(project_id: str, body: Revise, db: Database, user: CurrentUser):
+def revise(
+    project_id: str, body: Revise | QuestionAnswer, db: Database, user: CurrentUser
+):
+    if isinstance(body, QuestionAnswer):
+        return service.answer_question(db, project_id, user, **body.model_dump())
     return service.revise_design(db, project_id, user, **body.model_dump())
 
 

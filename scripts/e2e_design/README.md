@@ -1,11 +1,28 @@
 # Browser acceptance H
 
-From an integrated checkout on macOS or Linux, use the API's Python environment, the application's installed npm dependencies, Playwright for Node, and Chromium.
+From an integrated checkout on macOS or Linux, use the API's Python environment,
+the application's installed npm dependencies, Playwright for Node, Chromium, and
+a Playwright storage-state file for a user signed in to the configured Clerk
+instance.
+
+Export these values before running the launcher:
 
 ```sh
+export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+export CLERK_SECRET_KEY=...
+export CLERK_ISSUER=...
+export CLERK_E2E_STORAGE_STATE=/path/to/clerk-storage-state.json
 apps/api/.venv/bin/python scripts/e2e_design/run.py
 ```
 
-The launcher migrates a temporary SQLite database with Alembic, starts FastAPI with its ingestion and design workers, and serves Next on a separate ephemeral loopback port. Playwright registers an account through the API and uses the chat interface to upload a parking brief, inspect a cited tariff, apply a correction, read the diff and previous revision, and reload the saved result. The analysis stages use the shared parking model fixture. The read-only chat reply uses a streaming fixture at the provider boundary.
+The launcher migrates a temporary SQLite database and starts FastAPI and Next
+on loopback ports. Playwright opens the authenticated Clerk workspace, creates a
+project through the UI, uploads a parking brief, inspects tariff evidence,
+answers the formula question, compares revisions, checks saved IDs after reload,
+and exercises chat correction. Analysis stages use deterministic fixtures; chat
+uses a streaming fixture at the provider boundary. The Clerk storage state and
+keys are read from the environment and never copied into the temporary app.
 
-To reuse existing installations, set `E2E_NODE_MODULES` to the application's node_modules directory, `E2E_PLAYWRIGHT` to a resolvable Playwright package path, and `E2E_BROWSER` to a Chromium-compatible browser executable as needed. The optional `--app-root` argument selects a different integrated Git checkout. Temporary app sources, Next output and the database are removed on exit.
+Set `E2E_NODE_MODULES`, `E2E_PLAYWRIGHT`, and `E2E_BROWSER` to reuse existing
+installations. `--app-root` selects another integrated checkout. Temporary app
+sources, Next output and the database are removed on exit.

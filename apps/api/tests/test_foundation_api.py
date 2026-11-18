@@ -3,7 +3,7 @@ import os
 os.environ.update(
     DATABASE_URL="sqlite://",
     APP_ENV="test",
-    AUTH_SECRET="test-secret-that-is-at-least-32-characters",
+    SOURCE_TOKEN_ENCRYPTION_KEY="test-source-token-encryption-key",
     AUTO_CREATE_TABLES="true",
 )
 from fastapi.testclient import TestClient
@@ -11,6 +11,7 @@ from galvanise.main import app
 from galvanise.database import Base, engine, SessionLocal
 from galvanise.models import KnowledgeRecord, IngestionJob
 from galvanise.services.ingestion import process_next_job
+from auth_helpers import authenticate_as, sign_out_test_user
 
 
 def setup_function():
@@ -18,12 +19,8 @@ def setup_function():
     Base.metadata.create_all(engine)
 
 
-def signup(c, email="owner@example.com"):
-    r = c.post(
-        "/api/auth/register",
-        json={"email": email, "password": "long-password-123", "name": "Owner"},
-    )
-    assert r.status_code == 200, r.text
+def authenticate(c, email="owner@example.com"):
+    return authenticate_as(c, email, "Owner")
 
 
 def project(c):
@@ -38,9 +35,9 @@ def project(c):
     ).json()
 
 
-def test_auth_ownership_sessions_and_origins():
+def test_clerk_identity_ownership_and_origins():
     with TestClient(app) as c:
-        signup(c)
+        authenticate(c)
         p = project(c)
         assert c.get("/api/auth/me").status_code == 200
         assert (
@@ -51,22 +48,16 @@ def test_auth_ownership_sessions_and_origins():
             ).status_code
             == 403
         )
-        c.post("/api/auth/logout")
+        sign_out_test_user(c)
         assert c.get("/api/auth/me").status_code == 401
-        signup(c, "other@example.com")
+        authenticate(c, "other@example.com")
         assert c.get("/api/projects/" + p["id"]).status_code == 404
-        assert (
-            c.post(
-                "/api/auth/login",
-                json={"email": "owner@example.com", "password": "wrong"},
-            ).status_code
-            == 401
-        )
+
 
 
 def test_review_is_versioned_and_stale_updates_rejected():
     with TestClient(app) as c:
-        signup(c)
+        authenticate(c)
         p = project(c)
         with SessionLocal() as db:
             r = KnowledgeRecord(
@@ -92,7 +83,7 @@ def test_review_is_versioned_and_stale_updates_rejected():
 
 def test_upload_is_durable_bounded_and_redacted():
     with TestClient(app) as c:
-        signup(c)
+        authenticate(c)
         p = project(c)
         r = c.post(
             f"/api/projects/{p['id']}/documents",
@@ -132,8 +123,8 @@ def test_removing_a_repository_is_project_scoped_and_keeps_design_evidence():
     )
 
     with TestClient(app) as owner, TestClient(app) as outsider:
-        signup(owner)
-        signup(outsider, "other@example.com")
+        authenticate(owner)
+        authenticate(outsider, "other@example.com")
         pid = project(owner)["id"]
         other_project = project(owner)["id"]
         with SessionLocal() as db:
@@ -187,7 +178,7 @@ def test_removed_running_import_cannot_publish_files(monkeypatch):
     from galvanise.services import ingestion
 
     with TestClient(app) as client:
-        signup(client)
+        authenticate(client)
         pid = project(client)["id"]
         base = f"/api/projects/{pid}"
         with SessionLocal() as db:

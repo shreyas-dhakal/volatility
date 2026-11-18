@@ -3,8 +3,8 @@
 import argparse
 import json
 import os
-import secrets
 import shutil
+import secrets
 import signal
 import socket
 import subprocess
@@ -99,28 +99,47 @@ def run(root, tmp):
     stage(root, tmp)
     api, web = tmp / "apps/api", tmp / "apps/web"
     sys.path.insert(0, str(api / "tests"))
-    from parking_model import CORRECTION_TEXT, PARKING_POLICY, PARKING_TEXT
+    from parking_model import (
+        AMBIGUOUS,
+        CORRECTION_TEXT,
+        FORMULA,
+        PARKING_POLICY,
+        PARKING_TEXT,
+    )
 
     fixture = tmp / "parking.md"
-    fixture.write_text(PARKING_TEXT)
+    fixture.write_text(PARKING_TEXT.replace(PARKING_POLICY, AMBIGUOUS))
     api_port, web_port = free_port(), free_port()
     while web_port == api_port:
         web_port = free_port()
     api_origin = f"http://127.0.0.1:{api_port}"
-    web_origin = f"http://127.0.0.1:{web_port}"
+    web_origin = f"http://localhost:{web_port}"
+    required_clerk = (
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        "CLERK_SECRET_KEY",
+        "CLERK_ISSUER",
+        "CLERK_E2E_STORAGE_STATE",
+    )
+    missing_clerk = [key for key in required_clerk if not os.environ.get(key)]
+    if missing_clerk:
+        raise SystemExit("Set these Clerk E2E environment variables: " + ", ".join(missing_clerk))
     env = {
         k: os.environ[k] for k in ("HOME", "PATH", "TMPDIR", "LANG") if k in os.environ
     }
     env.update(
         APP_ENV="development",
-        AUTH_MODE="legacy",
-        AUTH_SECRET=secrets.token_hex(32),
+        SOURCE_TOKEN_ENCRYPTION_KEY=secrets.token_hex(32),
         DATABASE_URL=f"sqlite:///{tmp / 'acceptance.db'}",
         AUTO_CREATE_TABLES="false",
         OPENAI_API_KEY="fixture-only",
         OPENAI_BASE_URL=api_origin + "/unused-provider",
         WEB_URL=web_origin,
         API_URL=api_origin,
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=os.environ["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"],
+        CLERK_SECRET_KEY=os.environ["CLERK_SECRET_KEY"],
+        CLERK_ISSUER=os.environ["CLERK_ISSUER"],
+        CLERK_AUTHORIZED_PARTIES=json.dumps([web_origin]),
+        CLERK_E2E_STORAGE_STATE=os.environ["CLERK_E2E_STORAGE_STATE"],
         NEXT_TELEMETRY_DISABLED="1",
         PYTHONPATH=os.pathsep.join(map(str, [api, api / "tests", HERE])),
         PYTHONDONTWRITEBYTECODE="1",
@@ -165,8 +184,9 @@ def run(root, tmp):
             HERE / "acceptance.cjs",
             web_origin,
             fixture,
-            PARKING_POLICY,
+            AMBIGUOUS,
             CORRECTION_TEXT,
+            FORMULA,
         ]
         subprocess.run(scenario, cwd=tmp, env=browser_env, check=True)
 

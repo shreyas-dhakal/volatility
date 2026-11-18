@@ -129,6 +129,18 @@ def prepare(run_id, token):
             if not matches:
                 raise ValueError("Correction has no extractable text")
             correction = {"chunk_id": matches[0]["id"], "text": matches[0]["text"]}
+            if "question_id" in run.request_json:
+                question = next(
+                    q
+                    for q in parent.snapshot_json["questions"]
+                    if q["id"] == run.request_json["question_id"]
+                )
+                correction.update(
+                    question_id=question["id"],
+                    question=question["question"],
+                    decision_id=run.request_json["decision_id"],
+                    base_revision_id=parent.id,
+                )
         arguments = {
             "chunks": chunks,
             "manifest": manifest,

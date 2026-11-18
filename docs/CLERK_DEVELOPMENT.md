@@ -1,124 +1,59 @@
-# Clerk development migration
+# Clerk development setup
 
-This migration uses the existing application's development instance:
-`app_3MEbdIf6xt3sJt7mulZI7WMSb6y`. Never create or relink to another app.
-The migration plan is approved for development integration and isolated tests;
-real-user imports and production cutover still require separate confirmation.
+Clerk is the only authentication provider for Galvanise. The web app signs users
+in with Clerk, and protected API routes accept Clerk session tokens in the
+`Authorization: Bearer` header. The API has no application session-cookie auth.
 
-## Server configuration
+## Configure local development
 
-Provision configuration in the host, without putting values in source control or
-pasting secrets into agent chat. The API uses `AUTH_MODE=clerk` by default.
-`AUTH_MODE=legacy` is the coordinated rollback mode; it must agree across tiers.
+Set these values in the private root `.env` file:
 
-The API needs `CLERK_SECRET_KEY` for authoritative user lookup/provisioning,
-`CLERK_ISSUER` containing the exact development frontend API origin, and
-`CLERK_AUTHORIZED_PARTIES` containing a JSON array of the permitted web origins.
-`CLERK_JWT_KEY` is an optional public PEM for offline signature verification;
-otherwise the SDK fetches and caches verification keys using the server key.
-`CLERK_AUDIENCE` is optional, only when the issued session tokens use an audience.
-Do not configure it to an unrelated token template. Session verification checks
-issuer, authorized party, expiry, not-before, issued-at, subject and session ID,
-and accepts only session tokens sent in the Authorization bearer header.
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` for the Next.js
+  Clerk SDK.
+- `CLERK_SECRET_KEY` and `CLERK_ISSUER` for API verification and profile lookup.
+- `CLERK_AUTHORIZED_PARTIES` as a JSON array of allowed web origins, for example
+  `["http://localhost:3000"]`.
+- `SOURCE_TOKEN_ENCRYPTION_KEY` to encrypt GitHub source tokens stored by the
+  API. Keep it stable while those credentials are in use.
 
-Keep `AUTH_SECRET` unchanged: source tokens in `accounts.token_ciphertext` depend
-on it. Clerk sign-in does not replace repository authorization, the source OAuth
-client or its existing callback. `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-`GITHUB_CALLBACK_URL` and `WEB_URL` retain their source-integration purpose.
-Clerk's GitHub social provider is configured separately in the selected instance.
+`CLERK_JWT_KEY` is an optional PEM public key for local JWT verification;
+otherwise the Clerk SDK uses the server key. `CLERK_AUDIENCE` is only needed when
+your Clerk session tokens contain an audience. The issuer must exactly match the
+Clerk instance used by the frontend. Never commit or print secret values.
 
-Both tiers must use the same Clerk instance. Missing API configuration fails
-closed; installing the frontend SDK alone does not complete the migration.
-Offline token verification can accept a revoked session until its short-lived
-JWT expires; user bans/locks are checked via the authoritative user lookup on
-each API request. Review session-lifetime needs before production rollout.
+The API checks token signature, issuer, authorized party, expiry, not-before,
+issued-at, user subject and session ID. It accepts session tokens only from the
+bearer header. Clerk profile lookup verifies that users are active and their
+primary email is verified. Project ownership remains in Galvanise's database;
+Clerk IDs map to stable local owner IDs.
 
-## Migration tooling
+## Existing owner records
 
-Run from `apps/api` using an operator-managed database connection. These commands
-are not startup hooks and must not run against real users without approval:
+If an existing local owner has already been linked to a Clerk account, the
+reconciliation command checks that the Clerk external ID and verified email
+match the local mapping:
 
 ```sh
-uv run alembic upgrade head
-uv run python -m galvanise.clerk_import
+cd apps/api
+uv run python -m galvanise.clerk_reconcile --apply
 ```
 
-The second command is a read-only preflight: no Clerk calls and no exported user
-records. It reports total/ready/blocked/migrated counts. It checks normalized email
-collisions and supported Argon2 encoding; null passwords require an existing
-GitHub connection. Any blocked user prevents the entire apply batch.
+Without `--apply`, it reports how many mapped users would be checked and does not
+call Clerk. The command never creates Clerk accounts or changes passwords. An
+identity mismatch stops reconciliation and requires an operator to resolve it.
 
-After separately confirming the exact development database, instance and window:
+## Start and verify
 
-```sh
-uv run python -m galvanise.clerk_import --apply --confirm-development-import
-```
+Run the app locally with `./scripts/run-local.sh`. The launcher applies database
+migrations before starting the API and web app. Configure both frontend and API
+with the same Clerk instance before signing in. Missing Clerk keys show the setup
+page and protected API requests fail closed.
 
-The command requires `APP_ENV=development` and a development secret key. It
-imports original hashes, reserves unverified emails, sets `external_id` to the
-local UUID, and persists `users.clerk_user_id`. It reconciles by external ID before
-retrying ambiguous failures, honors rate-limit backoff and never merges by email.
-The database mapping is its durable checkpoint. Retry the same command after
-interruption; resolve identity conflicts manually, never overwrite a mapping.
-Output contains counts or redacted errors, never hashes, tokens or full records.
+API tests use isolated SQLite databases. The Clerk authentication tests verify
+locally signed JWTs through the installed Clerk SDK and cover invalid signatures,
+issuer, authorized party, time claims, cookie-only requests, account mapping,
+owner isolation and identity conflicts. They do not require a live Clerk account.
 
-First prove import/sign-in with synthetic users in the selected development
-instance. OAuth-only users need email verification and Clerk account linking;
-source tokens stay local. Changed/inaccessible emails require independently
-verified recovery. Test both before any real-user import.
-
-After the agreed maintenance freeze, final delta import, ownership reconciliation
-and coordinated Clerk-mode deploy, optionally remove old session rows:
-
-```sh
-uv run python -m galvanise.clerk_cutover
-uv run python -m galvanise.clerk_cutover --apply --confirm-development-cutover
-```
-
-Dry-run is the default; apply requires development and Clerk mode. Old cookies
-are rejected in Clerk mode even before row cleanup. This command does not revoke
-Clerk sessions, change deployment mode, delete password hashes or touch GitHub
-credentials. Users must sign in again. Browser sign-out must call Clerk signOut;
-the old `/api/auth/logout` endpoint only removes the legacy cookie/session.
-
-## Verification without account access
-
-```sh
-APP_ENV=test DATABASE_URL=sqlite:// AUTH_MODE=legacy uv run pytest
-```
-
-Tests force an isolated in-memory database and disable environment-file loading.
-Existing domain fixtures explicitly exercise legacy mode; Clerk tests switch mode
-and pass real locally signed tokens through the installed Clerk SDK. They cover
-invalid signatures/times/issuer/origins, source linking, legacy-cookie rejection,
-owner isolation, migration retries/conflicts, and reserved-email payloads. These
-tests do not establish live instance compatibility or successful host setup.
-
-Do not apply a blind database snapshot rollback after users have created work or
-changed credentials. Keep the write freeze until the rehearsal passes; otherwise
-reconcile Clerk-only users and changed credentials or forward-fix. Retain the
-additive mapping and source encryption material through the rollback window.
-
-## Frontend setup and guards
-
-The installed frontend SDK is Core 3 (`@clerk/nextjs` 7), with `proxy.ts`, an
-async server protection boundary, provider inside body, and Suspense around
-prebuilt auth forms. Sign-in and sign-up live at `/sign-in` and `/sign-up`.
-The sidebar retains the Settings gear beside the local account name and includes
-Clerk's account control. Account Settings and sign-out also work before the first
-project exists. Account switches unmount all previous workspace state/streams.
-
-Next.js also reads `AUTH_MODE` (default Clerk). In Clerk mode both
-`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` must be provisioned in
-the host before building/running. Missing keys show a setup-needed page without
-invoking Clerk's accountless development flow. Rebuild after adding/changing
-public configuration. Auth loading never triggers protected API calls.
-
-Because the SDK integration was wired independently while host login was pending,
-do not run `init` over it. After the user logs in from their own host terminal,
-link only the selected existing app if needed and pull its development keys using
-Clerk's supported CLI; do not read/print generated environment or claim files.
-Run `npx -y clerk@latest doctor` from `apps/web`, then start on an isolated worker
-port. Configure FastAPI's matching issuer/authorized parties and server key in the
-host too. A successful keyless-disabled build with missing keys is only a build
-check, not evidence of working Clerk sign-in.
+The frontend uses `@clerk/nextjs` with `proxy.ts`, server-side route protection,
+and Clerk's sign-in and sign-up pages at `/sign-in` and `/sign-up`. Account
+switches unmount the previous workspace state and in-flight requests.

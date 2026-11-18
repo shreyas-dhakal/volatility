@@ -50,6 +50,12 @@ async def call_model(stage, context):
             "\nThe complete set of allowed volatility IDs for owns and volatility_id is "
             + json.dumps([v["id"] for v in decisions])
         )
+    if stage == "walkthroughs":
+        inputs["required_paths_by_use_case"] = {
+            case["id"]: ["main", *case["exceptions"]]
+            for case in inputs["prior"]["use_cases"]
+        }
+        instructions += "\nCopy the paths from required_paths_by_use_case verbatim into each walkthrough."
     async with configured_client(model=selected_model) as client:
         response = await client.responses.parse(
             model=selected_model,

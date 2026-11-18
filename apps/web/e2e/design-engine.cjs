@@ -1,4 +1,4 @@
-// Run against a legacy-mode production build with npm run test:e2e --workspace @galvanise/web.
+// Run against a Clerk-configured production build with npm run test:e2e --workspace @galvanise/web.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
@@ -101,9 +101,9 @@ test('upload, recover a run, inspect evidence, correct a revision and plan in re
   const listener=net.createServer();
   listener.listen(0,'127.0.0.1');await once(listener,'listening');
   const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
-  const url='http://127.0.0.1:'+port;
+  const url='http://localhost:'+port;
   const server=spawn(process.execPath,[require.resolve('next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(port)],{
-    cwd:require('node:path').resolve(__dirname,'..'),env:{...process.env,AUTH_MODE:'legacy',NEXT_TELEMETRY_DISABLED:'1'},stdio:'pipe',
+    cwd:require('node:path').resolve(__dirname,'..'),env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'},stdio:'pipe',
   });
   t.after(()=>server.kill());
   let logs='';server.stderr.on('data',d=>logs+=d);server.stdout.on('data',d=>logs+=d);
@@ -113,7 +113,9 @@ test('upload, recover a run, inspect evidence, correct a revision and plan in re
     await new Promise(resolve=>setTimeout(resolve,100));
   }
   const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  if(!process.env.CLERK_E2E_STORAGE_STATE)throw Error('Set CLERK_E2E_STORAGE_STATE to a signed-in Clerk storage-state file.');
+  const context=await browser.newContext({viewport:{width:1280,height:900},storageState:process.env.CLERK_E2E_STORAGE_STATE});
+  const page=await context.newPage();
   page.setDefaultTimeout(7000);
   const errors=[];page.on('pageerror',e=>errors.push(e));
   const transport=await fixture(page);
@@ -133,7 +135,7 @@ test('upload, recover a run, inspect evidence, correct a revision and plan in re
   await heading('Current implementation').waitFor();
   await tab('Volatility').click();await button('Tariff by site').click();
   await page.getByText('Pricing engine',{exact:true}).waitFor();await button('View source 1').click();
-  await heading('Cited excerpt').waitFor();await page.getByText(quote,{exact:true}).waitFor();
+  await heading('Cited excerpt').waitFor();await page.getByRole('dialog',{name:'Source evidence'}).getByText(quote,{exact:true}).waitFor();
   await page.getByText('parking.md',{exact:true}).waitFor();await button('Close source').click();
   await tab('Architecture').click();
   const diagram=page.getByRole('figure',{name:'Component dependency diagram'});

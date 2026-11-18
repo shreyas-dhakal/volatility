@@ -47,20 +47,17 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "generate", generate)
     try:
         with TestClient(app) as client:
-            register(client)
+            authenticate(client, session_factory=sessions)
             yield client, project(client), sessions
     finally:
         del app.dependency_overrides[get_db]
         engine.dispose()
 
 
-def register(client, email="owner@example.org"):
-    result = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "sample-password-123", "name": "Owner"},
-    )
-    assert result.status_code == 200, result.text
-
+def authenticate(client, email="owner@example.org", session_factory=None):
+    if session_factory is None:
+        return authenticate_as(client, email)
+    return authenticate_as(client, email, session_factory=session_factory)
 
 def project(client):
     response = client.post(
@@ -178,7 +175,7 @@ def test_scope_checks_include_messages_chunks_runs_and_plan_inputs(api):
         == 404
     )
     with TestClient(app) as other:
-        register(other, "other@example.org")
+        authenticate(other, "other@example.org")
         second = project(other)
         assert other.get(url).status_code == 404
         assert other.get(second + "/chunks/" + chunk).status_code == 404

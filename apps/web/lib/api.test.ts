@@ -2,7 +2,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {ApiError,consumeSSE,request,chat} from './api';
 afterEach(()=>vi.unstubAllGlobals());
 describe('authenticated API requests',()=>{
- it('includes cookies and accepts successful JSON',async()=>{const fetcher=vi.fn().mockResolvedValue(new Response('{"id":"p1"}'));vi.stubGlobal('fetch',fetcher);expect(await request('/projects')).toEqual({id:'p1'});expect(fetcher.mock.calls[0][1].credentials).toBe('include')});
+ it('uses same-origin requests and accepts successful JSON',async()=>{const fetcher=vi.fn().mockResolvedValue(new Response('{"id":"p1"}'));vi.stubGlobal('fetch',fetcher);expect(await request('/projects')).toEqual({id:'p1'});expect(fetcher.mock.calls[0][1].credentials).toBe('same-origin')});
  it('preserves actionable server errors and stale review status',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"detail":"Record changed. Refresh before reviewing."}',{status:409})));await expect(request('/record')).rejects.toMatchObject({status:409,message:'Record changed. Refresh before reviewing.'})});
  it('makes offline failures actionable',async()=>{vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new TypeError('network')));await expect(request('/projects')).rejects.toThrow('Check that the API is running')});
  it('does not set a JSON header on multipart uploads',async()=>{const fetcher=vi.fn().mockResolvedValue(new Response('{}'));vi.stubGlobal('fetch',fetcher);await request('/documents',{method:'POST',body:new FormData()});expect(fetcher.mock.calls[0][1].headers).toEqual({})});
@@ -13,7 +13,7 @@ describe('streamed conversations',()=>{
  it('releases readers when a stream contains malformed data',async()=>{const stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(new TextEncoder().encode('data: bad\n\n'));c.close()}});await expect(consumeSSE(stream,()=>{})).rejects.toThrow();expect(stream.locked).toBe(false)});
 });
 describe('validation feedback',()=>{
- it('names invalid inputs instead of hiding validation details',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"detail":[{"loc":["body","password"],"msg":"At least 10 characters"}]}',{status:422})));await expect(request('/auth/register')).rejects.toThrow('password: At least 10 characters')});
+ it('names invalid inputs instead of hiding validation details',async()=>{vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{"detail":[{"loc":["body","name"],"msg":"Required"}]}',{status:422})));await expect(request('/projects')).rejects.toThrow('name: Required')});
  it('gives actionable offline errors for chat too',async()=>{vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new TypeError('network')));await expect(chat('/chat','hello',()=>{})).rejects.toThrow('Check that the API is running')});
 });
 

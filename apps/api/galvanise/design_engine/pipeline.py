@@ -12,6 +12,7 @@ from .schemas import Snapshot
 from .validation import (
     check_evidence,
     check_links,
+    record_citations,
     review_checks,
     review_reasons,
     user_message,
@@ -19,7 +20,7 @@ from .validation import (
 
 
 def signature(chunks, manifest, base, correction, start_stage, prior_ids):
-    data = [2, chunks, manifest, base, correction, start_stage, prior_ids]
+    data = [3, chunks, manifest, base, correction, start_stage, prior_ids]
     return hashlib.sha256(
         json.dumps(data, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -32,12 +33,29 @@ def remove_previous_checks(snapshot):
 
 def check_final(candidate, chunks, correction):
     check_evidence({field: candidate[field] for field in COLLECTIONS}, chunks)
-    if correction:
+    if correction and correction.get("question_id"):
+        decision = next(
+            (
+                v
+                for v in candidate["volatilities"]
+                if v["id"] == correction["decision_id"]
+            ),
+            None,
+        )
+        explanation = (decision or {}).get("explanation") or {}
+        if not decision or not any(
+            c["chunk_id"] == correction["chunk_id"]
+            for c in decision["evidence"] + explanation.get("evidence", [])
+        ):
+            raise ValueError(
+                "Cite the question answer on its original decision or boundary explanation."
+            )
+    elif correction:
         cited = any(
             c["chunk_id"] == correction["chunk_id"]
             for field in COLLECTIONS
             for row in candidate[field]
-            for c in row["evidence"]
+            for c in record_citations(row)
         )
         if not cited:
             raise ValueError(
@@ -81,7 +99,7 @@ async def run_call(stage, snapshot, context, all_chunks, correction, hints):
             request = {
                 **context,
                 "repair": {
-                    "instruction": "Return a corrected response for this stage only. Resolve these validation errors.",
+                    "instruction": "Return the entire corrected response for this stage. The previous response was rejected in full. Keep its valid records, fix every diagnostic and copy existing IDs and exception paths exactly from prior.",
                     "diagnostics": str(exc),
                     "previous_response": raw,
                 },
@@ -172,5 +190,30 @@ async def generate(
                 "snapshot": deepcopy(snapshot),
             },
         )
+    if fresh and base:
+        messages = {c["id"]: c["text"] for c in chunks if user_message(c)}
+        history = {v["id"]: v["answers"] for v in base["volatilities"]}
+        for decision in snapshot["volatilities"]:
+            decision["answers"] = [
+                a
+                for a in history.get(decision["id"], [])
+                if a["evidence"]["excerpt"]
+                in messages.get(a["evidence"]["chunk_id"], "")
+            ]
     check_final(snapshot, chunks, correction)
+    if correction and correction.get("question_id"):
+        decision = next(
+            v for v in snapshot["volatilities"] if v["id"] == correction["decision_id"]
+        )
+        decision.setdefault("answers", []).append(
+            {
+                "question_id": correction["question_id"],
+                "question": correction["question"],
+                "base_revision_id": correction["base_revision_id"],
+                "evidence": {
+                    "chunk_id": correction["chunk_id"],
+                    "excerpt": correction["text"],
+                },
+            }
+        )
     return Snapshot.model_validate(snapshot).model_dump()

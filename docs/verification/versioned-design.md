@@ -17,7 +17,7 @@ From the repository root, with the server’s `.env` configured, run:
 ./scripts/run-local.sh
 ```
 
-The launcher applies migrations and starts the API, background workers, and web app. For local password authentication, use `AUTH_MODE=legacy ./scripts/run-local.sh`. Set `OPENAI_API_KEY` on the server. The six design stages use `DESIGN_MODEL` when configured and fall back to `OPENAI_MODEL`. [Setup and test commands](../../README.md#versioned-design-from-chat)
+The launcher applies migrations and starts the API, background workers, and web app. For local authentication, configure Clerk and use `./scripts/run-local.sh`. Set `OPENAI_API_KEY` on the server. The six design stages use `DESIGN_MODEL` when configured and fall back to `OPENAI_MODEL`. [Setup and test commands](../../README.md#versioned-design-from-chat)
 
 ## Verification at delivery
 

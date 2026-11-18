@@ -119,13 +119,13 @@ Use strict typing where practical.
 
 ## 4. Authentication and connected accounts
 
-Implement real authentication.
+Use Clerk for authentication across the web and API.
 
 Support:
 
-- User accounts.
+- Clerk-managed user accounts.
 - GitHub OAuth.
-- Secure session handling.
+- Verify Clerk session tokens at the API boundary; never fall back to local passwords or API session cookies.
 - Multiple projects per user.
 - Connected GitHub repositories.
 - Project ownership and access checks.
@@ -236,7 +236,11 @@ OPENAI_MODEL=
 DATABASE_URL=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
-AUTH_SECRET=
+CLERK_SECRET_KEY=
+CLERK_ISSUER=
+CLERK_AUTHORIZED_PARTIES=[]
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+SOURCE_TOKEN_ENCRYPTION_KEY=
 ```
 
 Use a currently supported OpenAI model configured through `OPENAI_MODEL`.

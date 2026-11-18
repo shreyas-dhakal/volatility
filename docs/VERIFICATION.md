@@ -44,7 +44,7 @@ python3 scripts/smoke.py --base-url http://localhost:3002 --graph-file examples/
 
 The verified local `.env` uses web3002/API8000/PostgreSQL5433 because an unrelated application occupies3000. Fresh `.env.example` defaults to web3000. Keep WEB_PORT, WEB_URL and the OAuth callback consistent.
 
-The smoke script creates uniquely named accounts/projects without deleting existing data. It checks HttpOnly sessions, unauthenticated denial, cross-project ownership, blocked cross-origin mutation, persistent conversations, missing-provider errors, durable document ingestion, actual Graphify import and bounded graph retrieval, explicit synthetic seed, review history, stale-version409 and sign-out/sign-in recovery. It never calls OpenAI or GitHub.
+The smoke script uses two Clerk session bearer tokens supplied by the operator (`python3 scripts/smoke.py --token <owner-token> --other-token <other-user-token>`). It checks unauthenticated denial, cross-project ownership, blocked cross-origin mutation, persistent conversations, missing-provider errors, durable document ingestion, optional Graphify import and bounded graph retrieval, explicit synthetic seed, review history, and stale-version conflicts. It never calls OpenAI or GitHub.
 
 ## Regression evidence
 

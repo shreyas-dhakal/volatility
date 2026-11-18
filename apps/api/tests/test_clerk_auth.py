@@ -5,25 +5,25 @@ import os
 os.environ.update(
     APP_ENV="test",
     DATABASE_URL="sqlite://",
-    AUTH_MODE="legacy",
     AUTO_CREATE_TABLES="true",
 )
 import time
 from types import SimpleNamespace as NS
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+
+from galvanise import clerk_identity
 from galvanise.config import settings
 from galvanise.database import Base, SessionLocal, engine
 from galvanise.main import app
-from galvanise.models import User, Project, Account, Session as LegacySession, now
-from galvanise.security import digest, encrypt
-from galvanise import clerk_auth, clerk_identity
+from galvanise.models import Account, Project, User
+from galvanise.security import encrypt
 
 PRIVATE = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PUBLIC = (
@@ -53,7 +53,6 @@ def token(**changes):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(settings, "auth_mode", "clerk")
     monkeypatch.setattr(settings, "clerk_issuer", "https://test.clerk.accounts.dev")
     monkeypatch.setattr(settings, "clerk_jwt_key", PUBLIC)
     monkeypatch.setattr(settings, "clerk_authorized_parties", ["http://localhost:3091"])
@@ -142,19 +141,8 @@ def test_tampered_and_machine_tokens_are_rejected(client):
         assert client.get("/api/auth/me").status_code == 401
 
 
-def test_legacy_cookie_never_falls_back_in_clerk_mode(client):
-    from datetime import timedelta
-
-    with SessionLocal() as db:
-        db.add(
-            LegacySession(
-                user_id="owner",
-                token_hash=digest("old-token"),
-                expires_at=now() + timedelta(days=1),
-            )
-        )
-        db.commit()
-    client.cookies.set("session", "old-token")
+def test_cookie_alone_never_authenticates(client):
+    client.cookies.set("session", "untrusted-cookie-value")
     assert client.get("/api/projects").status_code == 401
     assert client.get("/api/health").status_code == 200
     for route in [
@@ -167,20 +155,6 @@ def test_legacy_cookie_never_falls_back_in_clerk_mode(client):
         "/api/auth/github/repos",
     ]:
         assert client.get(route).status_code == 401, route
-
-
-def test_legacy_signin_endpoints_cannot_issue_sessions(client):
-    for route in ["login", "register"]:
-        response = client.post(
-            "/api/auth/" + route,
-            json={
-                "name": "A",
-                "email": "a@example.com",
-                "password": "long-test-password",
-            },
-        )
-        assert response.status_code == 410
-        assert "session=" not in response.headers.get("set-cookie", "")
 
 
 def test_github_source_start_requires_bearer_and_returns_navigation_url(

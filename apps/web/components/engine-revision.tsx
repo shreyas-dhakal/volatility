@@ -8,6 +8,7 @@ import {entityNames,entityTitle,type Entity,type Snapshot,type Revision} from '.
 import {request} from '../lib/api';
 import {Button,Heading,Text,VStack} from './ui';
 import {Citations,DetailValue,label} from './engine-evidence';
+import {DecisionRows} from './engine-volatility';
 import {useEngine} from './engine-session';
 
 export function DetailRows({title,rows,names}:{title:string;rows:Record<string,unknown>[];names:Map<string,string>}){
@@ -63,9 +64,7 @@ export function RevisionPanel({revision,tab,objective}:{revision:Revision;tab:st
     {rows('Current implementation',s.implementation_findings)}
     <RevisionDiff key={revision.id} revision={revision} names={names}/>
   </VStack>;
-  if(tab==='Volatility')return rows('Decisions and owners',s.volatilities.map(v=>({
-    ...v,owner:s.components.find(c=>c.owns.includes(v.id))?.name||'Unassigned',
-  })));
+  if(tab==='Volatility')return <DecisionRows key={revision.id} revision={revision} names={names}/>;
   if(tab==='Architecture')return <VStack gap={5}><Heading level={2}>Proposed design</Heading>
     <DependencyDiagram snapshot={s} names={names}/>{rows('Components',s.components)}{rows('Contracts',s.contracts)}
     {rows('Dependencies',s.dependencies.map(d=>({...d,display_title:(names.get(d.caller_id)||d.caller_id)+' → '+(names.get(d.callee_id)||d.callee_id)})))}
@@ -87,7 +86,7 @@ function RevisionDiff({revision,names}:{revision:Revision;names:Map<string,strin
       <Text>{change.reason}</Text>
     </VStack>):<Text>No entity changes recorded.</Text>}
     {parent?<VStack gap={3}><Heading level={3}>Previous revision</Heading>
-      <Text type="supporting">{parent.id}</Text><DetailRows title="Previous decisions" rows={parent.snapshot.volatilities} names={earlierNames}/>
+      <Text type="supporting">{parent.id}</Text><DecisionRows revision={parent} names={earlierNames} historical/>
       <Button label="Hide previous revision" onClick={()=>setParent(null)}/>
     </VStack>:<Button label="Inspect previous revision" onClick={async()=>{
       try{setError('');setParent(await request(path+'/revisions/'+encodeURIComponent(revision.parent_revision_id!)))}catch(e){setError((e as Error).message)}

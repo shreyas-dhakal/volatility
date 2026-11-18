@@ -1,5 +1,5 @@
 'use client';
-import {Activity,useId,useState} from 'react';
+import {Activity,useEffect,useId,useRef,useState} from 'react';
 import {Drawer} from '@astryxdesign/core/Drawer';
 import {Tab,TabList} from '@astryxdesign/core/TabList';
 import {BookOpen,Layers,Upload} from 'lucide-react';
@@ -9,6 +9,7 @@ import type {Document,Job} from '../lib/types';
 import {Button,FileInput,Heading,HStack,Text,VStack} from './ui';
 import {AppIcon} from './workspace-ui';
 import {useEngine} from './engine-session';
+import {answeredDecision} from './engine-volatility';
 import {RevisionPanel} from './engine-revision';
 import {EvidenceInspector,label} from './engine-evidence';
 import {ProjectPlan} from './engine-plan';
@@ -35,6 +36,14 @@ export function EngineChat({objective,base,documents,jobs,refresh,openSources,me
   const [uploading,setUploading]=useState(false),[uploadError,setUploadError]=useState(''),[notice,setNotice]=useState('');
   const unique=useId();
   const isActive=activeRun(run??null);
+  const lastRevision=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!revision)return;
+    if(lastRevision.current && lastRevision.current===revision.parent_revision_id && answeredDecision(revision)){
+      setTab('Volatility');setOpen(true);
+    }
+    lastRevision.current=revision.id;
+  },[revision]);
   const unavailable=!state||busy||isActive||!!loadError;
   const ingesting=jobs.some(j=>['pending','queued','running','processing'].includes(j.status)&&j.kind==='document');
   const uploadFailed=jobs.find(j=>j.kind==='document'&&j.status==='failed');
@@ -69,7 +78,7 @@ export function EngineChat({objective,base,documents,jobs,refresh,openSources,me
     <HStack gap={1} wrap="wrap" vAlign="center">
       <Button label="Design system" size="sm" icon={<AppIcon icon={Layers}/>} isDisabled={unavailable||uploading||ingesting}
         onClick={()=>engine.start('analyze',{...(selected.length?{selected_upload_ids:selected}:{}),...(messageId?{request_message_id:messageId}:{})})}/>
-      {revision&&<><Button label="View design" size="sm" icon={<AppIcon icon={BookOpen}/>} onClick={()=>{setTab('Overview');setOpen(true)}}/>
+      {revision&&<><Button label="View design" size="sm" icon={<AppIcon icon={BookOpen}/>} onClick={()=>{setTab(answeredDecision(revision)?'Volatility':'Overview');setOpen(true)}}/>
         <Button label="Plan project" size="sm" isDisabled={unavailable} onClick={openPlan}/></>}
       <Button label={selected.length?'Design files ('+selected.length+')':'Add files'} size="sm" variant="ghost" icon={<AppIcon icon={Upload} color="secondary"/>} onClick={()=>setFiles(true)}/>
     </HStack>

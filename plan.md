@@ -7,7 +7,7 @@
 ## Constraints and review focus
 
 - Never invent AI results, graph edges, integration status or measured savings.
-- Every project endpoint and AI tool must enforce ownership. Session cookies are HttpOnly; GitHub credentials remain encrypted on the server.
+- Every project endpoint and AI tool must enforce ownership. Clerk bearer tokens identify users; GitHub credentials remain encrypted on the server.
 - Uploaded/repository text is untrusted evidence. Limit file sizes, retrieval and graph sizes; never execute code.
 - Pending AI knowledge cannot overwrite approved records. Reviews and corrections preserve history.
 - Missing credentials produce actionable errors. External OAuth/OpenAI end-to-end checks require user-provided credentials; no auth bypass is a production default.
@@ -18,7 +18,7 @@
 - [x] Save the complete original prompt and inspect the empty workspace.
 - [x] Install mandatory Astryx packages, initialise CLI and read every generated instruction/configuration before UI development.
 - [x] Establish npm monorepo, Python uv project, environment sample, Docker Compose and API contract.
-- [x] Build authentication, encrypted GitHub OAuth, sessions, projects, conversations, persistence and migrations. Test ownership, invalid sessions and CSRF/origin checks.
+- [x] Build Clerk authentication, encrypted GitHub OAuth, projects, conversations, persistence and migrations. Test ownership, invalid tokens and CSRF/origin checks.
 - [x] Build validated document/repository ingestion, durable job records and safe source retrieval. Test oversized/invalid uploads and secret redaction.
 - [x] Inspect a real Graphify export schema; implement normalisation and NetworkX traversal/search/path/scenario functions with fixture tests.
 - [x] Build real OpenAI SSE chat, structured extraction, project-scoped tools, volatility, questions, evidence validation, traceability and two candidate designs. Test with mocked SDK responses and no-key errors.
@@ -39,7 +39,7 @@
 
 Backend: `cd apps/api && uv run pytest` and `uv run alembic upgrade head`.
 Frontend: `npm run test --workspace @galvanise/web` and `npm run build --workspace @galvanise/web`.
-Runtime: start PostgreSQL, API and web; register/sign in, create independent projects, upload sample requirements and graph, review knowledge, explore graph, sign out/in and reopen conversation. Validate missing OpenAI/OAuth configuration honestly; run live calls only if credentials exist.
+Runtime: start PostgreSQL, API and web; sign in through Clerk, create independent projects, upload sample requirements and graph, review knowledge, explore graph, sign out/in and reopen conversation. Validate missing OpenAI/OAuth configuration honestly; run live calls only if credentials exist.
 
 ## Execution ledger
 
@@ -50,7 +50,7 @@ Runtime: start PostgreSQL, API and web; register/sign in, create independent pro
 - No external API credentials available in environment; verify real integrations via mocked boundary tests and actionable missing-configuration errors, and report live-call validation as outstanding.
 
 - Runtime verification: real PostgreSQL migration and schema drift check pass; local runner starts and stops owned app process groups; production Docker API/web images build, all three Compose services healthy on web3002/API8000/DB5433.
-- End-to-end smoke passed both direct API and frontend proxy: local accounts, session cookie, ownership isolation, CSRF/origin block, documents/background jobs, Graphify graph retrieval, synthetic seed, versioned review/stale conflicts and reopen after login.
+- End-to-end smoke passed both direct API and frontend proxy: Clerk bearer authentication, ownership isolation, CSRF/origin block, documents/background jobs, Graphify graph retrieval, synthetic seed, versioned review/stale conflicts and reopen after login.
 - Independent code review reproduced/fixed missing persistent answer context and stale same-title proposals; recheck approved. UI verification fixed scrolling-effect promise crash and narrow control truncation; Figtree is locally served and observed loaded.
 - External credential requirement remains: live OpenAI completion/GitHub consent need user-provided credentials; no fake production responses implemented.
 

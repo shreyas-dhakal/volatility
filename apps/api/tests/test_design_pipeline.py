@@ -462,3 +462,162 @@ async def test_exception_flow_resolves_when_source_wraps_a_line(monkeypatch):
 
     result = await altered(monkeypatch, wrapped)
     assert any("\n" in step["path"] for step in result["walkthroughs"][0]["steps"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "policy,approach",
+    [
+        (
+            "Every site uses the same hourly formula. North sets its rate to two credits and South to five.",
+            "Configure the site rate",
+        ),
+        (
+            "Each site chooses its own charging formula.",
+            "Encapsulate the formula in Pricing",
+        ),
+        (
+            "North charges two credits and South charges five credits.",
+            "Configure the site rate",
+        ),
+    ],
+)
+async def test_boundary_explains_the_evidenced_variation(monkeypatch, policy, approach):
+    from parking_model import AMBIGUOUS, PARKING_POLICY
+
+    monkeypatch.setattr(pipeline, "call_model", ParkingModel())
+    snapshot = await run([source(PARKING_TEXT.replace(PARKING_POLICY, policy))])
+    decision = snapshot["volatilities"][0]
+    why = decision["explanation"]
+    assert why["approach"] == approach
+    assert why["evidence"] == [{"chunk_id": "parking", "excerpt": policy}]
+    assert why["owner_id"] == next(
+        c["id"] for c in snapshot["components"] if decision["id"] in c["owns"]
+    )
+    assert [a["hypothetical"] for a in decision["alternatives"]] == [
+        "hourly" not in policy,
+        True,
+    ]
+    assert bool(why["uncertainty"]) == (policy == AMBIGUOUS)
+    if why["uncertainty"]:
+        assert snapshot["questions"][0]["target_ids"] == [decision["id"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fault", ["missing", "owner", "decision", "citation", "duplicate"]
+)
+async def test_invalid_boundary_explanation_cannot_publish(monkeypatch, fault):
+    def damage(stage, context, response):
+        if stage != "boundaries":
+            return
+        rows = response["explanations"]
+        if fault == "missing":
+            rows.pop()
+        elif fault == "owner":
+            rows[0]["owner_id"] = rows[1]["owner_id"]
+        elif fault == "decision":
+            rows[0]["volatility_id"] = "unknown"
+        elif fault == "citation":
+            rows[0]["evidence"][0]["excerpt"] = "Fabricated source."
+        else:
+            rows.append(rows[0])
+
+    with pytest.raises(ValueError, match="boundaries failed validation"):
+        await altered(monkeypatch, damage)
+
+
+@pytest.mark.asyncio
+async def test_reanalysis_preserves_answers_only_with_their_selected_source(
+    monkeypatch,
+):
+    from parking_model import AMBIGUOUS, FORMULA, PARKING_POLICY, QUESTION
+
+    monkeypatch.setattr(pipeline, "call_model", ParkingModel())
+    brief = source(PARKING_TEXT.replace(PARKING_POLICY, AMBIGUOUS))
+    base = await run([brief])
+    decision = base["volatilities"][0]["id"]
+    note = {
+        "id": "answer",
+        "text": FORMULA,
+        "locator": {"kind": "message", "message_id": "msg", "role": "user"},
+    }
+    revised = await run(
+        [brief, note],
+        base=base,
+        start_stage="volatility",
+        correction={
+            "chunk_id": "answer",
+            "text": FORMULA,
+            "decision_id": decision,
+            "question_id": base["questions"][0]["id"],
+            "base_revision_id": "original",
+            "question": QUESTION,
+        },
+    )
+    included = await run([brief, note], base=revised)
+    excluded = await run([brief], base=revised)
+    assert included["volatilities"][0]["id"] == decision
+    assert (
+        included["volatilities"][0]["answers"] == revised["volatilities"][0]["answers"]
+    )
+    assert not excluded["volatilities"][0]["answers"]
+
+
+@pytest.mark.asyncio
+async def test_receipt_cannot_be_an_unchanged_consumer_and_a_rule_leak(monkeypatch):
+    def contradict(stage, context, response):
+        if stage == "walkthroughs":
+            probe = response["change_probes"][0]
+            probe["leaks"] = [
+                probe["consumers"][0]
+                | {"reason": "Receipt duplicates the calculation."}
+            ]
+
+    with pytest.raises(ValueError, match="unchanged consumer"):
+        await altered(monkeypatch, contradict)
+
+
+@pytest.mark.asyncio
+async def test_historical_snapshot_without_explanations_can_start_a_revision(
+    monkeypatch,
+):
+    monkeypatch.setattr(pipeline, "call_model", ParkingModel())
+    historical = await run()
+    for decision in historical["volatilities"]:
+        del decision["explanation"]
+        del decision["answers"]
+    for probe in historical["change_probes"]:
+        del probe["consumers"]
+    revised = await run(base=historical, start_stage="boundaries")
+    assert all(d["explanation"] for d in revised["volatilities"])
+    assert all("explanation" not in d for d in historical["volatilities"])
+
+
+@pytest.mark.asyncio
+async def test_unassigned_decision_keeps_its_ownership_gap(monkeypatch):
+    def unassign(stage, context, response):
+        if stage == "boundaries":
+            decision = response["explanations"].pop(0)["volatility_id"]
+            for component in response["components"]:
+                component["owns"] = [v for v in component["owns"] if v != decision]
+            response["findings"].append(
+                {
+                    "id": "gap",
+                    "code": "ownership_gap",
+                    "evidence": [],
+                    "severity": "warning",
+                    "target_ids": [decision],
+                    "message": "The brief leaves charge ownership open.",
+                }
+            )
+        if stage == "walkthroughs":
+            response["change_probes"][0]["predicted_owner_ids"] = []
+
+    snapshot = await altered(monkeypatch, unassign)
+    decision = snapshot["volatilities"][0]
+    assert decision["explanation"] is None
+    assert any(
+        f["code"] == "ownership_gap" and f["target_ids"] == [decision["id"]]
+        for f in snapshot["findings"]
+    )

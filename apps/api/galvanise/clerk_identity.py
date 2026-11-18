@@ -52,9 +52,9 @@ def resolve_user(db, subject, identity_provider=None):
         raise HTTPException(401, "Sign in required")
     user = db.scalar(select(User).where(User.clerk_user_id == subject))
     if user is None:
-        # Imported owners must be reconciled by the import command, not email guessing.
-        if remote.external_id:
-            raise HTTPException(409, "Account migration needs reconciliation")
+        # Existing owner records require an explicit mapping, never an email guess.
+        if remote.external_id and db.get(User, remote.external_id) is not None:
+            raise HTTPException(409, "Account identity conflict")
         email = primary_email(remote)
         if (
             not email
@@ -68,6 +68,7 @@ def resolve_user(db, subject, identity_provider=None):
                 409, "Sign in to your original account or request account recovery"
             )
         user = User(
+            id=remote.external_id,
             clerk_user_id=subject,
             email=address,
             name=" ".join(filter(None, [remote.first_name, remote.last_name]))

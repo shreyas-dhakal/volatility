@@ -257,15 +257,9 @@ def test_planning_api_persists_three_roster_comparison(planning_inputs):
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with TestClient(app) as client:
-        registration = client.post(
-            "/api/auth/register",
-            json={
-                "email": "plan@example.com",
-                "password": "long-password-123",
-                "name": "Planner",
-            },
-        )
-        assert registration.is_success, registration.text
+        from auth_helpers import authenticate_as
+
+        authenticate_as(client, "plan@example.com", "Planner")
         project = client.post("/api/projects", json={"name": "Planning fixture"})
         assert project.is_success, project.text
         pid = project.json()["id"]

@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 
 from galvanise.dependencies import require_project
+from galvanise.design_engine.records import persistent_id
 from galvanise.design_engine.sources import (
     insert_once,
     scoped,
@@ -14,12 +15,14 @@ from galvanise.design_engine.sources import (
     validate_selection,
 )
 from galvanise.models import (
+    Conversation,
     DesignChunk,
     DesignHead,
     DesignPlan,
     DesignRevision,
     DesignRun,
     DesignSource,
+    Message,
 )
 
 
@@ -215,19 +218,98 @@ def analyze_design(
     )
 
 
-def revise_design(
-    db, project_id, user, *, base_revision_id, correction_message_id, idempotency_key
+def answer_question(
+    db,
+    project_id,
+    user,
+    *,
+    base_revision_id,
+    question_id,
+    decision_id,
+    answer,
+    idempotency_key,
 ):
     require_project(project_id, db, user)
-    in_project(db, DesignRevision, project_id, base_revision_id)
+    answer = answer.strip()
+    if not answer:
+        raise HTTPException(422, "Enter an answer")
+    # Both inserts and enqueue share a transaction. A lost HTTP response or two
+    # simultaneous submissions with the same key create one message and one run.
+    conversation_id = persistent_id("decision-conversation", project_id)
+    message_id = persistent_id("decision-answer", project_id + "/" + idempotency_key)
+    insert_once(
+        db,
+        Conversation,
+        {"id": conversation_id, "project_id": project_id, "title": "Design decisions"},
+        ["id"],
+    )
+    insert_once(
+        db,
+        Message,
+        {
+            "id": message_id,
+            "conversation_id": conversation_id,
+            "project_id": project_id,
+            "role": "user",
+            "content": answer,
+        },
+        ["id"],
+    )
+    if user_message(db, project_id, message_id).content != answer:
+        raise HTTPException(409, "Idempotency key belongs to a different answer")
+    return revise_design(
+        db,
+        project_id,
+        user,
+        base_revision_id=base_revision_id,
+        correction_message_id=message_id,
+        idempotency_key=idempotency_key,
+        question_id=question_id,
+        decision_id=decision_id,
+    )
+
+
+def revise_design(
+    db,
+    project_id,
+    user,
+    *,
+    base_revision_id,
+    correction_message_id,
+    idempotency_key,
+    question_id=None,
+    decision_id=None,
+):
+    require_project(project_id, db, user)
+    revision = in_project(db, DesignRevision, project_id, base_revision_id)
+    target = {}
+    if question_id is not None:
+        snapshot = revision.snapshot_json
+        question = next(
+            (q for q in snapshot["questions"] if q["id"] == question_id), None
+        )
+        if (
+            not question
+            or decision_id not in question["target_ids"]
+            or not any(v["id"] == decision_id for v in snapshot["volatilities"])
+        ):
+            raise HTTPException(
+                422,
+                "This question does not target the decision in the selected revision",
+            )
+        target = {"question_id": question_id, "decision_id": decision_id}
     message = user_message(db, project_id, correction_message_id)
     return enqueue(
         db,
         project_id,
         "revise",
         idempotency_key,
-        {"base_revision_id": base_revision_id, "correction_message_id": message.id},
-        correction_stage(message.content),
+        {
+            "base_revision_id": base_revision_id,
+            "correction_message_id": message.id,
+            **target,
+        },
+        "volatility" if target else correction_stage(message.content),
     )
 
 
@@ -247,7 +329,9 @@ def retry(db, project_id, user, run_id):
                 project_id,
                 user,
                 base_revision_id=current,
-                correction_message_id=run.request_json["correction_message_id"],
+                **{
+                    k: v for k, v in run.request_json.items() if k != "base_revision_id"
+                },
                 idempotency_key=key,
             )
         return analyze_design(

@@ -63,6 +63,35 @@ class Volatility(Entity):
     use_case_ids: Texts
 
 
+class BoundaryExplanation(Model):
+    owner_id: Text
+    approach: Text
+    established: Text = Field(
+        description="What the cited passages establish, including limits on inference."
+    )
+    uncertainty: Text | None
+    rationale: Text
+    reconsider_when: Text
+    hypothetical_alternative: Text | None
+    evidence: list[Citation]
+
+
+class ExplanationEdit(BoundaryExplanation):
+    volatility_id: Text
+
+
+class DecisionAnswer(Model):
+    base_revision_id: Text
+    question_id: Text
+    question: Text
+    evidence: Citation
+
+
+class PublishedDecision(Volatility):
+    explanation: BoundaryExplanation | None = None
+    answers: list[DecisionAnswer] = Field(default_factory=list)
+
+
 class Component(Entity):
     name: Text
     role: Literal[
@@ -94,8 +123,12 @@ class Contract(Entity):
 
 
 class Dependency(Entity):
-    caller_id: Text
-    callee_id: Text
+    caller_id: Text = Field(
+        description="Component calling a different component. Never emit a dependency for a local step."
+    )
+    callee_id: Text = Field(
+        description="The component owning the operation. Must differ from caller_id."
+    )
     operation_id: Text
     reason: Text
 
@@ -119,7 +152,7 @@ class Walkthrough(Entity):
     outcome: Text
 
 
-class Leak(Model):
+class ComponentImpact(Model):
     component_id: Text
     reason: Text
 
@@ -129,7 +162,11 @@ class ChangeProbe(Entity):
     change: Text
     predicted_owner_ids: list[Text]
     predicted_edit_ids: list[Text]
-    leaks: list[Leak]
+    leaks: list[ComponentImpact]
+    consumers: list[ComponentImpact] = Field(
+        default_factory=list,
+        description="Components that consume the outcome unchanged, with the contract detail that protects each.",
+    )
 
     @model_validator(mode="after")
     def predictions_only(self):
@@ -143,7 +180,10 @@ class ChangeProbe(Entity):
         )
         if any(
             statistics.search(text)
-            for text in [self.change, *(leak.reason for leak in self.leaks)]
+            for text in [
+                self.change,
+                *(impact.reason for impact in [*self.leaks, *self.consumers]),
+            ]
         ):
             raise ValueError(
                 "Change probes contain predictions only. Put observed measurements in cited implementation findings."
@@ -159,7 +199,9 @@ class Question(Entity):
 
 
 class Finding(Entity):
-    code: Text
+    code: Text = Field(
+        description="Use the exact code 'revision' for a review edit, 'ownership_gap' for an unassigned decision, or 'coverage_gap' for an untraced use case."
+    )
     severity: Literal["info", "warning", "error"]
     message: Text
     target_ids: list[Text]
@@ -210,7 +252,7 @@ class DecisionEdit(Decisions, Edit):
 
 
 class BoundaryEdit(Boundaries, Edit):
-    pass
+    explanations: list[ExplanationEdit]
 
 
 class TraceEdit(Traces, Edit):
@@ -218,10 +260,12 @@ class TraceEdit(Traces, Edit):
 
 
 class Review(Boundaries, Traces):
+    explanations: list[ExplanationEdit]
     questions: Annotated[list[Question], Field(max_length=3)]
     retire: list[Retirement]
 
 
 class Snapshot(Inventory, UseCases, Decisions, Boundaries, Traces):
+    volatilities: list[PublishedDecision]
     analysis_type: Literal["design_analysis"] = "design_analysis"
     manifest: list[dict[str, Any]]

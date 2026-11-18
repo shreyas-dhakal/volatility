@@ -1,6 +1,6 @@
 # Shared implementation contract
 
-All workers read `PROMPT.md`, `plan.md`, `AGENTS.md` first. Shared checkout: edit only assigned paths. Do not commit another worker's work. Root coordinator integrates and runs the complete stack. API prefix `/api`. UUIDs serialized as strings, UTC timestamps ISO strings. Lists return arrays, errors FastAPI `{detail: string}`. Browser uses same-origin Next rewrite `/api/:path*` → `http://127.0.0.1:8000/api/:path*` (configurable `API_URL`). Cookie sessions; `credentials: include`.
+All workers read `PROMPT.md`, `plan.md`, `AGENTS.md` first. Shared checkout: edit only assigned paths. Do not commit another worker's work. Root coordinator integrates and runs the complete stack. API prefix `/api`. UUIDs serialized as strings, UTC timestamps ISO strings. Lists return arrays, errors FastAPI `{detail: string}`. Browser uses same-origin Next rewrite `/api/:path*` → `http://127.0.0.1:8000/api/:path*` (configurable `API_URL`). Clerk session tokens are sent as bearer tokens in the `Authorization` header.
 
 ## Ownership
 
@@ -16,11 +16,11 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 
 `galvanise.dependencies`: `get_current_user(request: Request, db: Session = Depends(get_db)) -> User`; `require_project(project_id: str, db: Session, user: User) -> Project` (404 on absent/unowned). Every intelligence route calls this directly or through dependency. No circular imports from main.
 
-`galvanise.config`: `settings` Pydantic Settings instance with `openai_api_key: str`, `openai_model: str` (default gpt-5.5), `database_url`, `auth_secret`, `web_url`, `github_client_id`, `github_client_secret`, `github_callback_url`, `cookie_secure`, `max_upload_bytes`. Load root `.env` as well as local env. Never print secrets.
+`galvanise.config`: `settings` Pydantic Settings instance with `openai_api_key: str`, `openai_model: str` (default gpt-5.5), `database_url`, `clerk_secret_key`, `clerk_jwt_key`, `clerk_issuer`, `clerk_authorized_parties`, `clerk_audience`, `web_url`, `github_client_id`, `github_client_secret`, `github_callback_url`, `max_upload_bytes`. `SOURCE_TOKEN_ENCRYPTION_KEY` encrypts GitHub credentials. Load root `.env` as well as local env. Never print secrets.
 
 `galvanise.models` mapped classes (all IDs `String` with UUID-string Python default):
 
-- `User`: id, email, name, password_hash nullable, created_at.
+- `User`: id, email, name, clerk_user_id, created_at.
 - `Project`: id, user_id, name, description, system_type (`existing`/`new`), objective, created_at.
 - `Conversation`: id, project_id, title, created_at.
 - `Message`: id, conversation_id, project_id, role, content, created_at, metadata_json JSON dict default {}.
@@ -35,7 +35,7 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 ## HTTP foundation
 
 - `GET /api/health` → `{status, ai_configured: bool, github_configured: bool}`
-- `POST /api/auth/register` `{name,email,password}` / `POST /api/auth/login` `{email,password}` → User `{id,email,name,github_connected: bool}` plus HttpOnly session cookie. `GET /api/auth/me` same or 401; `POST /api/auth/logout`.
+- Clerk is the only sign-in provider. `GET /api/auth/me` returns the authenticated Clerk user profile or 401. The API has no local password or server-session endpoints.
 - `GET /api/auth/github/start` redirect GitHub sign-in/connect. callback server only. Secure state and TTL. Least privilege OAuth `read:user user:email` (public repositories; document private-repository GitHub App future limit). Return `WEB_URL` on success. `GET /api/auth/github/repos` → `[{id,full_name,description,private,default_branch}]`.
 - `GET/POST /api/projects`, POST `{name,description,system_type,objective}` → Project. `GET /api/projects/{project_id}`.
 - `GET/POST /api/projects/{project_id}/conversations`, POST `{title?}` → Conversation.
@@ -61,4 +61,4 @@ Web worker owns `apps/web/`, root npm scripts/dependency lock updates if needed,
 
 ## Testing and delivery
 
-Foundation installs all API dependencies up front including FastAPI, SQLAlchemy, alembic, psycopg[binary], pydantic-settings, openai, networkx, httpx, cryptography, python-multipart, argon2-cffi, pypdf, python-docx; dev pytest, pytest-asyncio, ruff. Python >=3.12 via uv. Isolated SQLite tests allowed; runtime PostgreSQL. Foundation initial migration includes all tables, no enum-specific SQL. Each worker reports exact test/build output and limitations. No live OpenAI or OAuth claim without credentials. Do not log/dump environment credentials.
+Foundation installs all API dependencies up front including FastAPI, SQLAlchemy, alembic, psycopg[binary], pydantic-settings, openai, networkx, httpx, cryptography, python-multipart, pypdf, python-docx; dev pytest, pytest-asyncio, ruff. Python >=3.12 via uv. Isolated SQLite tests allowed; runtime PostgreSQL. Foundation initial migration includes all tables, no enum-specific SQL. Each worker reports exact test/build output and limitations. No live OpenAI or OAuth claim without credentials. Do not log/dump environment credentials.

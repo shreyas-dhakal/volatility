@@ -1,16 +1,11 @@
 import base64
 import hashlib
-import secrets
-from datetime import timedelta, timezone
+from datetime import UTC
 
-from argon2 import PasswordHasher
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from galvanise.config import settings
-from galvanise.models import Session, now
-
-hasher = PasswordHasher()
 
 
 def digest(value):
@@ -18,8 +13,12 @@ def digest(value):
 
 
 def cipher():
+    if not settings.source_token_encryption_key:
+        raise RuntimeError("SOURCE_TOKEN_ENCRYPTION_KEY is not configured")
     return Fernet(
-        base64.urlsafe_b64encode(hashlib.sha256(settings.auth_secret.encode()).digest())
+        base64.urlsafe_b64encode(
+            hashlib.sha256(settings.source_token_encryption_key.encode()).digest()
+        )
     )
 
 
@@ -32,28 +31,7 @@ def decrypt(value):
 
 
 def aware(value):
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-
-
-def issue_session(db, user, response):
-    token = secrets.token_urlsafe(48)
-    db.add(
-        Session(
-            user_id=user.id,
-            token_hash=digest(token),
-            expires_at=now() + timedelta(days=14),
-        )
-    )
-    db.commit()
-    response.set_cookie(
-        "session",
-        token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=1209600,
-        path="/",
-    )
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 def check_origin(request):

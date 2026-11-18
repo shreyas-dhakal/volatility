@@ -5,7 +5,7 @@ import os
 os.environ.update(
     DATABASE_URL="sqlite://",
     APP_ENV="test",
-    AUTH_SECRET="test-secret-that-is-at-least-32-characters",
+    SOURCE_TOKEN_ENCRYPTION_KEY="test-source-token-encryption-key",
     AUTO_CREATE_TABLES="true",
 )
 import json
@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from galvanise.database import Base, SessionLocal, engine
 from galvanise.main import app
 from galvanise.models import KnowledgeRecord, SourceDocument
+from auth_helpers import authenticate_as, sign_out_test_user
 from sqlalchemy import select
 
 
@@ -25,14 +26,7 @@ def client():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with TestClient(app) as c:
-        c.post(
-            "/api/auth/register",
-            json={
-                "email": "design@example.com",
-                "password": "long-password-123",
-                "name": "Architect",
-            },
-        )
+        authenticate_as(c, "design@example.com", "Architect")
         yield c
 
 
@@ -203,16 +197,9 @@ def test_manual_intake_validation_evidence_and_owner_isolation(client):
         db.commit()
         did = d.id
     assert intake(client, pid, evidence_ids=[did]).status_code == 422
-    client.post("/api/auth/logout")
+    sign_out_test_user(client)
     assert client.get(f"/api/projects/{pid}/design").status_code == 401
-    client.post(
-        "/api/auth/register",
-        json={
-            "email": "outside@example.com",
-            "password": "long-password-123",
-            "name": "Outside",
-        },
-    )
+    authenticate_as(client, "outside@example.com", "Outside")
     for method, path, body in [
         ("get", "", None),
         ("post", "/use-cases", {}),

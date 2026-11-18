@@ -137,6 +137,8 @@ def upsert(snapshot, changes, hints=()):
                 row["evidence"] = list(
                     {(c["chunk_id"], c["excerpt"]): c for c in citations}.values()
                 )
+            if previous and kind == "volatilities":
+                row["answers"] = previous.get("answers", [])
             if previous and kind == "contracts":
                 operations = {op["id"]: op for op in previous["operations"]}
                 operations.update((op["id"], op) for op in row["operations"])
@@ -174,6 +176,20 @@ def upsert(snapshot, changes, hints=()):
                 "evidence": [],
             }
         )
+    decisions = {row["id"]: row for row in candidate["volatilities"]}
+    updated = set()
+    for edit in resolved.get("explanations", []):
+        decision_id = edit.pop("volatility_id")
+        if decision_id not in decisions or decision_id in updated:
+            raise ValueError(
+                f"Unknown or duplicate explanation for decision {decision_id}."
+            )
+        updated.add(decision_id)
+        decisions[decision_id]["explanation"] = edit
+    if "explanations" in resolved:
+        owned = {v for component in candidate["components"] for v in component["owns"]}
+        for decision_id in decisions.keys() - owned - updated:
+            decisions[decision_id].pop("explanation", None)
     return candidate
 
 
@@ -183,7 +199,7 @@ def reference_ids(value):
             yield from reference_ids(item)
     if isinstance(value, dict):
         for key, item in value.items():
-            if key == "evidence":
+            if key in {"evidence", "explanation", "answers"}:
                 continue
             if key.endswith("_id") and item:
                 yield item

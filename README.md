@@ -11,7 +11,7 @@ If you already have Galvanise open, sign in and follow the steps below. To run i
 1. **Create a project.** Choose **Create your first project** and give it a name, such as “Wholesale ordering.” To look around a workspace with fictional data already in it, choose **Explore sample project**.
 2. **Add a file.** In chat, choose **Add files**, select a file, click **Upload to project**, then **Done**. A written brief is enough to start. For this walkthrough, use the [sample wholesale brief](examples/wholesale-requirements.md).
 3. **Generate the design.** Choose **Design system** or type “Design this system” in chat. You can leave and come back while the analysis runs. When it finishes, choose **View design**.
-4. **Check one decision.** Open **Volatility**, expand a decision, and click its evidence to read the original passage. In the wholesale example, the brief says warehouse allocation policies will vary. It leaves open who handles exceptions. Check which parts of the proposal the files support and which are assumptions.
+4. **Check one decision.** Open **Volatility**, expand a decision, and click its evidence to read the original passage. In the wholesale example, the brief says warehouse allocation policies will vary. It leaves open who handles exceptions. Read why the proposed owner fits and what would make the team reconsider. Choose **Answer this question** to record a clarification and compare the revised decision with its previous version.
 5. **Ask a question or make a correction.** Try “Why does this part own the allocation rule?” to discuss the saved design. If you know an assumption is wrong, type “Correction: Central operations approves all warehouse allocation exceptions.” Galvanise saves a new version and shows what changed. You can also select **Apply as correction** on an earlier message and inspect the previous version.
 
 ## Versioned design from chat
@@ -34,16 +34,16 @@ For example, suppose two independent tasks each take two working days, followed 
 
 You need Node.js 22 or later with npm, Python 3.12 or later, uv, and Docker with Compose. Start Docker first. You also need an OpenAI API key to generate a design or chat with the model.
 
-1. Open a terminal in the repository folder. Run the following command for local email-and-password sign-in.
+1. Open a terminal in the repository folder. Run the following command to start the Clerk-backed local app.
 
    ```sh
-   AUTH_MODE=legacy ./scripts/run-local.sh
+   ./scripts/run-local.sh
    ```
 
-2. On a fresh checkout, the launcher creates a private `.env` file, installs dependencies, starts PostgreSQL in Docker, and prepares the database. To enable AI, open `.env` in the repository folder, set `OPENAI_API_KEY`, and set `OPENAI_MODEL` to a model your account can use for structured output. Keep the generated `AUTH_SECRET` across restarts. After editing `.env`, press Ctrl+C and run the same command again.
-3. Open the web address printed in the terminal. The default is `http://localhost:3000`. Create a local account, then start your first project. Press Ctrl+C when you are done. Your projects stay in PostgreSQL for the next session.
+2. On a fresh checkout, the launcher creates a private `.env` file, installs dependencies, starts PostgreSQL in Docker, and prepares the database. To enable AI, open `.env` in the repository folder, set `OPENAI_API_KEY`, and set `OPENAI_MODEL` to a model your account can use for structured output. Set your Clerk publishable key, secret key, and issuer for local development. After editing `.env`, restart the app.
+3. Open the web address printed in the terminal. The default is `http://localhost:3000`. Sign in or create an account through Clerk, then start your first project. Press Ctrl+C when you are done. Your projects stay in PostgreSQL for the next session.
 
-For a workspace that uses Clerk sign-in, configure Clerk and start with `./scripts/run-local.sh`. To use a different model just for design generation, set `DESIGN_MODEL` in `.env`. [Clerk setup guide](docs/CLERK_DEVELOPMENT.md)
+Configure the Clerk publishable key, secret key, issuer, and authorized party in `.env`. To use a different model just for design generation, set `DESIGN_MODEL` in `.env`. [Clerk setup guide](docs/CLERK_DEVELOPMENT.md)
 
 ## What you can upload
 
@@ -63,7 +63,7 @@ npm test
 npm run build
 ```
 
-The browser test follows a project from upload through correction and reload. The opt-in live test submits a fictional parking brief to OpenAI and writes a report you can inspect. [Browser test instructions](scripts/e2e_design/README.md) · [Delivery and verification results](docs/verification/versioned-design.md) · [API guide](apps/api/README.md)
+The browser test follows a tariff decision from its source passage through a question, a revised boundary, and reload. The opt-in live evaluation runs the same fictional brief with two receipt implementations. It writes a report for each and checks whether the model distinguishes a consumer from a duplicated calculation. [Browser test instructions](scripts/e2e_design/README.md) · [Delivery and verification results](docs/verification/versioned-design.md) · [API guide](apps/api/README.md)
 
 ```sh
 (cd apps/api && RUN_DESIGN_LIVE=1 DESIGN_LIVE_REPORT=../../test-results/design-live.json uv run pytest -q -s tests/test_engine_live.py)
