@@ -41,7 +41,7 @@ def graph_for(db,project_id,graph_id):
 
 
 def index_for(graph): return GraphIndex(graph.nodes_json,graph.edges_json,graph.metadata_json.get('directed',True))
-def summary(graph): return {'id':graph.id,'name':graph.name,'node_count':len(graph.nodes_json),'edge_count':len(graph.edges_json),'metadata':graph.metadata_json}
+def summary(graph): return {'id':graph.id,'source_id':graph.source_id,'name':graph.name,'node_count':len(graph.nodes_json),'edge_count':len(graph.edges_json),'metadata':graph.metadata_json}
 
 
 @router.post('/projects/demo')
@@ -109,6 +109,15 @@ async def import_graph(project_id:str,file:UploadFile=File(...),db:Session=Depen
 def graphs(project_id:str,db:Session=Depends(get_db),user:User=Depends(get_current_user)):
     require_project(project_id,db,user)
     return [summary(g) for g in db.scalars(select(TechnicalGraph).where(TechnicalGraph.project_id==project_id)).all()]
+
+
+@router.get('/projects/{project_id}/graphs/{graph_id}/export')
+def export_graph(project_id:str,graph_id:str,db:Session=Depends(get_db),user:User=Depends(get_current_user)):
+    require_project(project_id,db,user)
+    export = graph_for(db,project_id,graph_id).export_json
+    if export is None:
+        raise HTTPException(404, 'No generated Graphify export exists for this graph')
+    return export
 
 
 @router.get('/projects/{project_id}/graphs/{graph_id}/paths')

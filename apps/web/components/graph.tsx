@@ -8,7 +8,7 @@ import {request} from '../lib/api';
 import {adaptGraph,localNodeDetail} from '../lib/graph-view';
 import {AppIcon,fieldLabel,plainValue} from './workspace-ui';
 import {Search,Network,ArrowRight} from 'lucide-react';
-import type {GraphData,GraphSummary,Knowledge} from '../lib/types';
+import type {GraphData,GraphSummary,Knowledge,Job,Source} from '../lib/types';
 const s=stylex.create({canvas:{height:'38rem',minHeight:'24rem',border:'1px solid var(--color-border)',borderRadius:'var(--radius-container)',overflow:'hidden'},detail:{borderTop:'1px solid var(--color-border)'},measure:{maxWidth:'70ch'}});
 function BoundaryGroup({data}:NodeProps){return <VStack padding={4} gap={1}><Text weight="semibold">{String(data.label)}</Text><Text type="supporting">Proposed part · select for details</Text></VStack>}
 const nodeTypes={boundaryGroup:BoundaryGroup};
@@ -18,9 +18,40 @@ function DetailFields({value}:{value:unknown}){
  if(Array.isArray(value))return <VStack gap={2}>{value.map((v,i)=><DetailFields key={i} value={v}/>)}</VStack>;
  return <VStack gap={4}>{Object.entries(value as Record<string,unknown>).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&!v.length)).map(([key,v])=><VStack gap={1} key={key}><Text weight="semibold">{fieldLabel(key)}</Text><DetailFields value={v}/></VStack>)}</VStack>
 }
-export function GraphWorkspace({base,graphs,records,onError}:{base:string;graphs:GraphSummary[];records:Knowledge[];onError:(s:string)=>void}){
+type GraphWorkspaceProps = {
+ base:string; graphs:GraphSummary[]; records:Knowledge[]; onError:(s:string)=>void;
+ repositories?:Source[]; jobs?:Job[]; busy?:boolean; build?:(id:string)=>Promise<void>; openSources?:()=>void;
+};
+
+export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositories=[],jobs=[],busy,build,openSources}:GraphWorkspaceProps){
+ const graphs=allGraphs.filter(g=>!(g.metadata?.provenance==='GitHub tree API' && g.metadata.dependencies_inferred===false));
+ const unbuilt=repositories.filter(repo=>!graphs.some(g=>g.source_id===repo.id && g.metadata?.generator==='graphify'));
+ const buildControls=unbuilt.map(repo=>{
+   const job=jobs.filter(j=>j.kind==='graphify' && j.source_id===repo.id).at(-1);
+   const building=job?.status==='queued'||job?.status==='running';
+   if(repo.status==='empty')return <VStack key={repo.id} gap={2}><Text weight="semibold">{repo.name}</Text>
+     <Text color="secondary">This repository has no commits yet. After the first commit, choose Check for commits in Files &amp; code.</Text>
+     <Button label="Open Files & code" onClick={openSources}/></VStack>;
+   const indexing=repo.status!=='ready' && repo.status!=='failed';
+   return <VStack key={repo.id} gap={2}>
+     <Text weight="semibold">{repo.name}</Text>
+     <Text color="secondary">{building?'Graphify is building your code map.':indexing?'Indexing repository files…':repo.status==='failed'?'Repository indexing failed. Check Files & code.':job?.status==='failed'?job.error:'The code map hasn’t been built yet.'}</Text>
+     <Button label={job?.status==='failed'?'Retry build':'Build code map'} isLoading={building}
+       isDisabled={busy||building||repo.status!=='ready'} onClick={()=>build?.(repo.id)}/>
+   </VStack>;
+ });
  const [id,setId]=useState(''),[query,setQuery]=useState(''),[focus,setFocus]=useState(''),[driver,setDriver]=useState(''),[candidate,setCandidate]=useState(''),[data,setData]=useState<GraphData|null>(null),[detail,setDetail]=useState<unknown>(null),[technicalDetail,setTechnicalDetail]=useState(false),[loading,setLoading]=useState(false),[source,setSource]=useState(''),[target,setTarget]=useState(''),[paths,setPaths]=useState<unknown>(null);
- const selected=id||graphs[0]?.id||'';
+ const currentGraph=graphs.find(g=>g.id===id)||graphs[0];
+ const selected=currentGraph?.id||'';
+ async function download(){
+   try{
+     const graph=await request(`${base}/graphs/${selected}/export`);
+     const url=URL.createObjectURL(new Blob([JSON.stringify(graph,null,2)],{type:'application/json'}));
+     const link=document.createElement('a');
+     link.href=url;link.download='graph.json';link.click();
+     setTimeout(()=>URL.revokeObjectURL(url),1000);
+   }catch(e){onError((e as Error).message)}
+ }
  async function load(){if(!selected)return;setLoading(true);try{const params=new URLSearchParams({query,focus,limit:'80'});if(driver)params.set('driver_id',driver);if(candidate)params.set('candidate_id',candidate);setData(await request(`${base}/graphs/${selected}?${params}`))}catch(e){onError((e as Error).message)}finally{setLoading(false)}}
  useEffect(()=>{setDetail(null);setFocus('');load()},[selected,base,driver,candidate]);
  const adapted=useMemo(()=>data?adaptGraph(data):{nodes:[],edges:[],boundaries:[]},[data]);
@@ -28,10 +59,19 @@ export function GraphWorkspace({base,graphs,records,onError}:{base:string;graphs
  useEffect(()=>{setFlowNodes(adapted.nodes)},[adapted.nodes,setFlowNodes]);
  const inspect=useCallback(async(nodeId:string)=>{if(!data)return;const local=localNodeDetail(nodeId,data,records);if(local){setTechnicalDetail(false);setDetail(local);return}try{setDetail(await request(`${base}/graphs/${selected}/nodes/${encodeURIComponent(nodeId)}`));setTechnicalDetail(true);setFocus(nodeId)}catch(e){onError((e as Error).message)}},[data,records,base,selected,onError]);
  const onSelection=useCallback(({nodes}:OnSelectionChangeParams)=>{if(nodes[0])void inspect(nodes[0].id)},[inspect]);
- if(!graphs.length)return <VStack gap={4}><Heading level={1}>Code map</Heading><Text color="secondary">Add a code map or a GitHub repository in Files & code to get started.</Text></VStack>;
+ if(!graphs.length)return <VStack gap={4}><Heading level={1}>Code map</Heading>
+   {buildControls}
+   {!repositories.length && <><Text color="secondary">{busy?'Loading project…':'Add a GitHub repository to build a code map, or import a Graphify JSON file.'}</Text>
+     {!busy && <Button label="Open Files & code" onClick={openSources}/>}</>}
+ </VStack>;
  return <VStack gap={5}>
  <Heading level={1}>Code map</Heading>
  <Text color="secondary" xstyle={s.measure}>See how your code connects. Select a part to view its details and sources.</Text>
+ {buildControls}
+ {currentGraph?.metadata?.generator==='graphify' && <VStack gap={2}>
+   <Text type="supporting" color="secondary">Built from the indexed snapshot{currentGraph.metadata.indexed_text_files!=null?` · ${currentGraph.metadata.indexed_text_files} files indexed`:''}{currentGraph.metadata.skipped_files?` · ${currentGraph.metadata.skipped_files} files skipped during indexing`:''}</Text>
+   <Button label="Download graph.json" onClick={download}/>
+ </VStack>}
  <HStack gap={4} wrap="wrap"><HStack gap={2} vAlign="center"><AppIcon icon={Network} color="purple"/><Text type="supporting">Proposed parts</Text></HStack><HStack gap={2} vAlign="center"><AppIcon icon={Network} color="orange"/><Text type="supporting">Related to a change</Text></HStack><Text type="supporting" color="secondary">Dashed connections need checking.</Text></HStack>
  <HStack gap={3} wrap="wrap"><Selector label="Code map" value={selected} onChange={setId} options={graphs.map(g=>({value:g.id,label:displayText(g.name)}))}/><Selector label="Reason for change" value={driver} onChange={setDriver} options={[{value:'',label:'All changes'},...records.filter(r=>r.kind==='driver').map(r=>({value:r.id,label:displayText(r.title)}))]}/><Selector label="Compare design" value={candidate} onChange={setCandidate} options={[{value:'',label:'Current system'},...records.filter(r=>r.kind==='architecture').map(r=>({value:r.id,label:displayText(r.title)}))]}/></HStack>
  <HStack gap={3} vAlign="end" wrap="wrap"><TextInput label="Find code" value={query} onChange={setQuery} onEnter={load} placeholder="Name or file path"/><Selector label="Show nearby code" value={focus} onChange={setFocus} options={[{value:'',label:'All parts'},...(data?.nodes||[]).filter(n=>!n.id.startsWith('business:')).map(n=>({value:n.id,label:displayText(n.label)}))]}/><Button label="Show results" icon={<AppIcon icon={Search} color="blue"/>} isLoading={loading} onClick={load}/></HStack>

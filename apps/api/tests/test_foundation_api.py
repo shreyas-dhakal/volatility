@@ -204,3 +204,110 @@ def test_removed_running_import_cannot_publish_files(monkeypatch):
         assert process_next_job()
         for endpoint in ("sources", "documents", "jobs"):
             assert client.get(f"{base}/{endpoint}").json() == []
+
+
+def test_build_and_reopen_repository_code_map():
+    from galvanise.models import ConnectedSource, SourceDocument
+
+    with TestClient(app) as client:
+        authenticate(client)
+        pid = project(client)["id"]
+        base = f"/api/projects/{pid}"
+        with SessionLocal() as db:
+            repo = ConnectedSource(project_id=pid, kind="github", name="shop/cart", status="ready")
+            db.add(repo)
+            db.flush()
+            sid = repo.id
+            db.add_all([
+                SourceDocument(project_id=pid, source_id=sid, name="shop/price.py",
+                               content="def price():\n    return 10\n"),
+                SourceDocument(project_id=pid, source_id=sid, name="shop/cart.py",
+                               content="from .price import price\ndef total():\n    return price()\n"),
+            ])
+            db.commit()
+        path = base + "/sources/github/" + sid + "/graph"
+        assert client.get(base + "/graphs").json() == []
+        job = client.post(path).json()
+        assert client.post(path).json()["id"] == job["id"]
+        assert process_next_job()
+        assert client.get(base + "/jobs").json()[0]["status"] == "completed"
+        graph, = client.get(base + "/graphs").json()
+        assert client.post(path).json() == {"graph_id": graph["id"]}
+        graph_path = base + "/graphs/" + graph["id"]
+        assert client.get(graph_path).json()["edges"]
+        export = client.get(graph_path + "/export").json()
+        assert any(n.get("source_file") == "shop/cart.py" for n in export["nodes"])
+        assert any(e["relation"] == "calls" for e in export["links"])
+        authenticate(client, "outsider@example.com")
+        assert client.get(graph_path + "/export").status_code == 404
+        assert client.post(path).status_code == 404
+
+
+def test_failed_map_build_leaves_repository_ready_for_retry():
+    from galvanise.models import ConnectedSource
+
+    with TestClient(app) as client:
+        authenticate(client)
+        pid = project(client)["id"]
+        base = f"/api/projects/{pid}"
+        with SessionLocal() as db:
+            repo = ConnectedSource(project_id=pid, kind="github", name="empty/repo", status="ready")
+            db.add(repo)
+            db.commit()
+            path = f"{base}/sources/github/{repo.id}/graph"
+        job = client.post(path).json()
+        assert process_next_job()
+        failed, = client.get(base + "/jobs").json()
+        assert failed["status"] == "failed"
+        assert "no supported code" in failed["error"]
+        assert client.get(base + "/sources").json()[0]["status"] == "ready"
+        assert client.get(base + "/graphs").json() == []
+        assert job["id"] != client.post(path).json()["id"]
+
+
+def test_empty_repository_can_be_checked_again_after_first_commit(monkeypatch):
+    import httpx
+    from galvanise.integrations import github
+    from galvanise.services import ingestion
+    from galvanise.models import User, ConnectedSource
+    from sqlalchemy import select
+
+    empty = True
+
+    def github_get(url, **kwargs):
+        if "/git/trees/" in url:
+            status, body = ((409, {"message": "Git Repository is empty."}) if empty
+                            else (200, {"sha": "tree", "tree": [{"type": "blob", "path": "code.py", "sha": "blob", "size": 4}]}))
+        elif "/git/blobs/" in url:
+            status, body = 200, {"content": "cGFzcw=="}
+        else:
+            status, body = 200, {"id": 1, "default_branch": "main"}
+        return httpx.Response(status, json=body, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(github.httpx, "get", github_get)
+    monkeypatch.setattr(ingestion, "resolve_user", lambda db, subject: None)
+    monkeypatch.setattr(ingestion, "account_token", lambda user: None)
+    with TestClient(app) as client:
+        authenticate(client)
+        pid = project(client)["id"]
+        base = f"/api/projects/{pid}"
+        with SessionLocal() as db:
+            src = ConnectedSource(project_id=pid, kind="github", name="test/empty", status="failed")
+            db.add(src)
+            db.flush()
+            db.add(IngestionJob(project_id=pid, kind="github", status="failed", payload={
+                "user_id": db.scalar(select(User.id)), "repository_id": 1, "full_name": src.name, "source_id": src.id,
+            }))
+            db.commit()
+            path = f"{base}/sources/github/{src.id}/retry"
+        assert client.post(path).json()["status"] == "queued"
+        assert process_next_job()
+        assert client.get(base + "/sources").json()[0]["status"] == "empty"
+        assert client.get(base + "/jobs").json()[0]["error"] is None
+        assert client.get(base + "/graphs").json() == []
+        empty = False
+        assert client.post(path).json()["status"] == "queued"
+        assert process_next_job()
+        assert client.get(base + "/sources").json()[0]["status"] == "ready"
+        assert len(client.get(base + "/documents").json()) == 1
+        assert client.post(path).status_code == 409

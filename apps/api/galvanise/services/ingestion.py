@@ -4,12 +4,14 @@ import re
 import zipfile
 from pathlib import PurePosixPath
 
+from fastapi import HTTPException
 from sqlalchemy import select, update
 
 from galvanise.clerk_identity import resolve_user
 from galvanise.config import settings
 from galvanise.database import SessionLocal
-from galvanise.integrations.github import account_token, api
+from galvanise.graph.repository import GraphBuildError, build_repository_graph
+from galvanise.integrations.github import EmptyRepository, account_token, api
 from galvanise.models import (
     ConnectedSource,
     IngestionJob,
@@ -256,9 +258,21 @@ def ingest_repository(db, job):
         raise ValueError("Repository identity changed")
     if info.get("private") and (not token or not payload.get("repository_id")):
         raise ValueError("Select the private repository again to authorize this import")
-    tree = api(
-        token, f"/repos/{repo}/git/trees/{info['default_branch']}", {"recursive": "1"}
-    )
+    source = db.get(ConnectedSource, payload["source_id"])
+    try:
+        tree = api(
+            token,
+            f"/repos/{repo}/git/trees/{info['default_branch']}",
+            {"recursive": "1"},
+        )
+    except EmptyRepository:
+        source.status = "empty"
+        source.metadata_json = {
+            "full_name": repo,
+            "file_count": 0,
+            "indexed_text_files": 0,
+        }
+        return
     if tree.get("truncated"):
         raise ValueError(
             "Repository tree is too large; import a focused Graphify export"
@@ -266,7 +280,6 @@ def ingest_repository(db, job):
     entries = [e for e in tree.get("tree", []) if e.get("type") == "blob"]
     if len(entries) > 3000:
         raise ValueError("Repository exceeds 3000 files")
-    source = db.get(ConnectedSource, payload["source_id"])
     nodes = []
     total = 0
     indexed = 0
@@ -374,6 +387,7 @@ def ingest_repository(db, job):
         "full_name": repo,
         "indexed_text_files": indexed,
         "file_count": len(nodes),
+        "tree_sha": tree.get("sha"),
         "skipped": skipped,
         "dependencies_inferred": False,
     }
@@ -433,8 +447,11 @@ def process_next_job():
                     db.flush()
                     document_ids.append(doc.id)
                 job.payload = {**job.payload, "document_ids": document_ids}
-            elif job.kind == "github":
-                ingest_repository(db, job)
+            elif job.kind in ("github", "graphify"):
+                if job.kind == "graphify":
+                    build_repository_graph(db, job)
+                else:
+                    ingest_repository(db, job)
                 # Deleting the import revokes its job. Lock the job before
                 # flushing staged files so deletion and publication serialize.
                 with db.no_autoflush:
@@ -459,7 +476,15 @@ def process_next_job():
             job.error = "Ingestion failed. Check file format, extraction limits, or GitHub connection."
             if isinstance(error, (ValueError, UnicodeDecodeError, zipfile.BadZipFile)):
                 job.error = "Document or repository does not satisfy ingestion limits or format requirements."
-            if job.payload.get("source_id"):
+            if job.kind == "github" and isinstance(error, HTTPException):
+                job.error = error.detail
+            if job.kind == "graphify":
+                job.error = (
+                    str(error)
+                    if isinstance(error, GraphBuildError)
+                    else "Graphify could not build this code map."
+                )
+            elif job.payload.get("source_id"):
                 source = db.get(ConnectedSource, job.payload["source_id"])
                 if source:
                     source.status = "failed"

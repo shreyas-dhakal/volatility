@@ -161,6 +161,7 @@ class TraceabilityLink(KnowledgeRecord):
 
 class TechnicalGraph(ProjectOwned, Base):
     __tablename__ = "technical_graphs"
+    export_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, deferred=True)
     source_id: Mapped[str | None] = mapped_column(
         ForeignKey("connected_sources.id"), nullable=True
     )

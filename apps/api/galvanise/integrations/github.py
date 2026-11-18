@@ -33,6 +33,10 @@ def account_token(user):
     return None
 
 
+class EmptyRepository(Exception):
+    """GitHub confirmed the repository has no commits."""
+
+
 def api(token, path, params=None):
     try:
         r = httpx.get(
@@ -52,6 +56,12 @@ def api(token, path, params=None):
                 429,
                 "GitHub’s read limit was reached. Try again after the limit resets.",
             )
+        if (
+            r.status_code == 409
+            and "/git/trees/" in path
+            and r.json().get("message") == "Git Repository is empty."
+        ):
+            raise EmptyRepository()
         r.raise_for_status()
         return r.json()
     except (httpx.HTTPError, ValueError):

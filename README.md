@@ -47,7 +47,7 @@ Configure the Clerk publishable key, secret key, issuer, and authorized party in
 
 ## What you can upload
 
-Galvanise reads source code as text. It accepts individual code files, ZIP projects, Markdown, plain text, PDFs with selectable text, and Word files in DOCX format. The default upload limit is 10 MiB per file. For a scanned PDF, extract the text first. You can also connect a GitHub repository or import a Graphify file under **Files & code**. [Graphify import guide](docs/architecture/graphify.md)
+Galvanise reads source code as text. It accepts individual code files, ZIP projects, Markdown, plain text, PDFs with selectable text, and Word files in DOCX format. The default upload limit is 10 MiB per file. For a scanned PDF, extract the text first. Connect a GitHub repository under **Files & code**, then open **Code map** and select **Build code map** after indexing finishes. Graphify analyzes the indexed snapshot locally. The saved map opens on later visits and **Download graph.json** exports it. You can also import an existing Graphify file under **Files & code**. [Graphify import guide](docs/architecture/graphify.md)
 
 To connect GitHub, open **Settings → Connect GitHub** and authorize it through Clerk. Accessible repositories appear in the **Project** menu. Selecting one creates or reopens its Galvanise project. Private repositories require a GitHub App installation with read access. [Clerk GitHub setup](docs/CLERK_DEVELOPMENT.md#github-repository-access)
 

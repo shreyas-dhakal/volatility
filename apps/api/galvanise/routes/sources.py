@@ -39,6 +39,7 @@ def public_job(job):
                 "updated_at",
             )
         }
+        | {"source_id": job.payload.get("source_id")}
     )
 
 
@@ -75,7 +76,7 @@ def delete_repository(
     db.execute(
         delete(IngestionJob).where(
             IngestionJob.project_id == project_id,
-            IngestionJob.kind == "github",
+            IngestionJob.kind.in_(["github", "graphify"]),
             IngestionJob.payload["source_id"].as_string() == source_id,
         )
     )
@@ -87,6 +88,95 @@ def delete_repository(
         )
     db.execute(delete(ConnectedSource).where(*repository))
     db.commit()
+
+
+@router.post("/sources/github/{source_id}/retry")
+def retry_repository(
+    project_id: str,
+    source_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_project(project_id, db, user)
+    source = db.scalar(
+        select(ConnectedSource)
+        .where(
+            ConnectedSource.project_id == project_id,
+            ConnectedSource.id == source_id,
+            ConnectedSource.kind == "github",
+        )
+        .with_for_update()
+    )
+    if source is None:
+        raise HTTPException(404, "Repository not found")
+    job = db.scalar(
+        select(IngestionJob)
+        .where(
+            IngestionJob.project_id == project_id,
+            IngestionJob.kind == "github",
+            IngestionJob.payload["source_id"].as_string() == source_id,
+        )
+        .order_by(IngestionJob.created_at.desc())
+        .limit(1)
+    )
+    if job is None or source.status not in ("failed", "empty", "pending"):
+        raise HTTPException(409, "This repository cannot be retried.")
+    if source.status != "pending":
+        job.status = "queued"
+        job.error = None
+        source.status = "pending"
+        db.commit()
+    return public_job(job)
+
+
+@router.post("/sources/github/{source_id}/graph")
+def build_graph(
+    project_id: str,
+    source_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_project(project_id, db, user)
+    source = db.scalar(
+        select(ConnectedSource)
+        .where(
+            ConnectedSource.id == source_id,
+            ConnectedSource.project_id == project_id,
+            ConnectedSource.kind == "github",
+        )
+        .with_for_update()
+    )
+    if source is None:
+        raise HTTPException(404, "Repository not found")
+    if source.status != "ready":
+        raise HTTPException(
+            409, "Repository indexing must finish before building the map."
+        )
+    job = db.scalar(
+        select(IngestionJob).where(
+            IngestionJob.project_id == project_id,
+            IngestionJob.kind == "graphify",
+            IngestionJob.payload["source_id"].as_string() == source_id,
+            IngestionJob.status.in_(["queued", "running"]),
+        )
+    )
+    if job is not None:
+        return public_job(job)
+    existing = db.scalar(
+        select(TechnicalGraph.id).where(
+            TechnicalGraph.project_id == project_id,
+            TechnicalGraph.source_id == source_id,
+            TechnicalGraph.metadata_json["generator"].as_string() == "graphify",
+        )
+    )
+    if existing:
+        return {"graph_id": existing}
+    job = IngestionJob(
+        project_id=project_id, kind="graphify", payload={"source_id": source_id}
+    )
+    db.add(job)
+    db.commit()
+    return public_job(job)
 
 
 @router.post("/documents")
