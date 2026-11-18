@@ -3,7 +3,7 @@ import {createContext,useCallback,useContext,useEffect,useRef,useState,type Reac
 import {ApiError,post,request} from '../lib/api';
 import {activeRun,type EngineState,type Inputs,type Plan,type Run} from '../lib/design-engine';
 
-function useProjectEngine(base:string,streaming:boolean){
+function useProjectEngine(base:string,streaming:boolean,refreshKey:number){
   const path = base+'/design-engine';
   const [state,setState]=useState<EngineState|null>(null);
   const [busy,setBusy]=useState(false);
@@ -20,9 +20,12 @@ function useProjectEngine(base:string,streaming:boolean){
     }catch(e){if(version===sequence.current)setLoadError((e as Error).message)}
   },[path]);
   useEffect(()=>{
-    if(!streaming)void load();
-    return ()=>{sequence.current++};
-  },[load,streaming]);
+    if(streaming)return;
+    void load();
+    const onFocus=()=>void load();
+    window.addEventListener('focus',onFocus);
+    return ()=>{sequence.current++;window.removeEventListener('focus',onFocus)};
+  },[load,streaming,refreshKey]);
   const polling=activeRun(state?.run??null);
   useEffect(()=>{
     if(!polling)return;
@@ -68,8 +71,8 @@ function useProjectEngine(base:string,streaming:boolean){
   return {path,state,error,loadError,busy:busy||streaming,load,start,retry,plan};
 }
 const EngineContext=createContext<ReturnType<typeof useProjectEngine>|null>(null);
-export function EngineSession({base,streaming,children}:{base:string;streaming:boolean;children:ReactNode}){
-  const engine=useProjectEngine(base,streaming);
+export function EngineSession({base,streaming,refreshKey,children}:{base:string;streaming:boolean;refreshKey:number;children:ReactNode}){
+  const engine=useProjectEngine(base,streaming,refreshKey);
   return <EngineContext.Provider value={engine}>{children}</EngineContext.Provider>;
 }
 export function useEngine(){

@@ -23,7 +23,7 @@ export function DetailValue({value,names=new Map<string,string>()}:{value:unknow
     </VStack>)}</VStack>;
   }
   if(typeof value==='boolean')return <Text>{value?'Yes':'No'}</Text>;
-  return <Text>{names.get(String(value))||String(value)}</Text>;
+  return <SourceText>{names.get(String(value))||String(value)}</SourceText>;
 }
 export function Citations({items}:{items?:Evidence[]}){
   const inspect=useContext(EvidenceContext);

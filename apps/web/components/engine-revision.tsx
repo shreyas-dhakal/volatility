@@ -1,10 +1,12 @@
 'use client';
-import {useState} from 'react';
+import {useMemo,useState} from 'react';
+import {Background,Controls,MarkerType,ReactFlow} from '@xyflow/react';
+import {layeredPositions} from '../lib/graph-view';
 import {Collapsible} from '@astryxdesign/core/Collapsible';
 import {Divider} from '@astryxdesign/core/Divider';
 import {entityNames,entityTitle,type Entity,type Snapshot,type Revision} from '../lib/design-engine';
 import {request} from '../lib/api';
-import {Button,Heading,HStack,Text,VStack} from './ui';
+import {Button,Heading,Text,VStack} from './ui';
 import {Citations,DetailValue,label} from './engine-evidence';
 import {useEngine} from './engine-session';
 
@@ -25,21 +27,34 @@ export function DetailRows({title,rows,names}:{title:string;rows:Record<string,u
 }
 
 function DependencyDiagram({snapshot,names}:{snapshot:Snapshot;names:Map<string,string>}){
-  const components=new Set(snapshot.components.map(c=>c.id));
-  const owners=new Map(snapshot.contracts.flatMap(c=>c.operations.map(op=>[op.id,c.owner_id] as const)));
-  const edges=snapshot.dependencies.filter(d=>components.has(d.caller_id)&&components.has(d.callee_id)&&owners.get(d.operation_id)===d.callee_id)
-    .sort((a,b)=>a.caller_id.localeCompare(b.caller_id)||a.callee_id.localeCompare(b.callee_id)||a.id.localeCompare(b.id));
-  return <VStack role="figure" aria-label="Component dependency diagram" gap={3}>
+  const graph=useMemo(()=>{
+    const components=[...snapshot.components].sort((a,b)=>a.id.localeCompare(b.id));
+    const ids=new Set(components.map(c=>c.id));
+    const owners=new Map(snapshot.contracts.flatMap(c=>c.operations.map(op=>[op.id,c.owner_id] as const)));
+    const edges=snapshot.dependencies
+      .filter(d=>ids.has(d.caller_id)&&ids.has(d.callee_id)&&owners.get(d.operation_id)===d.callee_id)
+      .sort((a,b)=>a.id.localeCompare(b.id))
+      .map(d=>({
+        id:d.id,source:d.caller_id,target:d.callee_id,label:names.get(d.operation_id),
+        ariaLabel:names.get(d.caller_id)+' calls '+names.get(d.operation_id)+' on '+names.get(d.callee_id),
+        markerEnd:{type:MarkerType.ArrowClosed},type:'smoothstep',
+      }));
+    const positions=layeredPositions(components,edges);
+    const nodes=components.map(c=>({id:c.id,position:positions.get(c.id)!,data:{label:c.name},ariaLabel:c.name}));
+    return {nodes,edges};
+  },[snapshot,names]);
+  return <VStack role="figure" aria-label="Component dependency diagram" gap={2}>
     <Heading level={3}>Component dependency diagram</Heading>
-    {edges.length?edges.map(edge=><HStack key={edge.id} wrap="wrap" gap={2} vAlign="center">
-      <Text weight="semibold">{names.get(edge.caller_id)}</Text>
-      <Text color="secondary">→ {names.get(edge.operation_id)} →</Text>
-      <Text weight="semibold">{names.get(edge.callee_id)}</Text>
-    </HStack>):<Text color="secondary">No validated dependencies.</Text>}
+    {graph.nodes.length>0&&<VStack style={{height:'22rem'}}><ReactFlow nodes={graph.nodes} edges={graph.edges}
+      nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
+      fitView minZoom={0.1} maxZoom={2} zoomOnScroll={false} preventScrolling={false}>
+      <Background/><Controls showInteractive={false}/>
+    </ReactFlow></VStack>}
+    {!graph.edges.length&&<Text color="secondary">No validated dependencies.</Text>}
   </VStack>;
 }
 export function RevisionPanel({revision,tab,objective}:{revision:Revision;tab:string;objective:string}){
-  const s=revision.snapshot,names=entityNames(s);
+  const s=revision.snapshot,names=useMemo(()=>entityNames(s),[s]);
   const rows=(title:string,items:Record<string,unknown>[]) => <DetailRows title={title} rows={items} names={names}/>;
   if(tab==='Overview')return <VStack gap={5}>
     <VStack gap={1}><Heading level={3}>System purpose</Heading><Text>{s.purpose||objective||s.use_cases.map(c=>c.outcome).filter(Boolean).join(' ')||'Purpose has not been established.'}</Text></VStack>
