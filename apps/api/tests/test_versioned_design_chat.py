@@ -2,11 +2,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
+from test_intelligence_api import FakeStream, create
 
 from galvanise.agents.design_chat import command, requests_existing_workflow
 from galvanise.database import Base, engine
 from galvanise.main import app
-from test_intelligence_api import FakeStream, create
 
 
 def test_only_explicit_design_commands_authorize_mutations():
