@@ -96,7 +96,7 @@ def redact(text):
     )
     return re.sub(
         r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
-        "[REDACTED PRIVATE KEY]",
+        lambda match: "[REDACTED PRIVATE KEY]" + re.sub(r"[^\r\n\f]", "", match[0]),
         text,
         flags=re.S,
     )
@@ -323,9 +323,15 @@ def ingest_repository(db, job):
             continue
         try:
             content = redact(raw.decode("utf-8"))
-        except UnicodeDecodeError:
+            if "\x00" in content:
+                raise ValueError("Binary content")
+        except ValueError:
             skipped.append(
-                {"path": path, "status": "unreadable", "detail": "Invalid UTF-8"}
+                {
+                    "path": path,
+                    "status": "unreadable",
+                    "detail": "File is not UTF-8 text",
+                }
             )
             continue
         db.add(

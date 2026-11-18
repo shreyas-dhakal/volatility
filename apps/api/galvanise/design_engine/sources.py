@@ -123,9 +123,12 @@ def store(
     sections = list(sections)
     if status == "analyzed" and not any(text.strip() for _, text in sections):
         status, detail = "unreadable", "No extractable text"
-    fingerprint = digest(
-        json.dumps([locator, sections, status, detail], sort_keys=True)
-    )
+    fingerprint = digest("\f".join(text for _, text in sections))
+    if status != "analyzed":
+        origin = json.dumps([origin, status, detail])
+    # PostgreSQL indexes have a size limit. Full provenance lives in the locator.
+    if len(origin.encode()) > 1024:
+        origin = digest(origin)
     values = {
         "id": uid(),
         "project_id": project_id,
@@ -149,7 +152,13 @@ def store(
         )
     ordinal = 0
     for section, value in sections:
-        for part, first, last in split_section(value):
+        # A chat correction is one citable utterance, bounded to 12,000
+        # characters at intake. Keep its final clauses with the original claim.
+        if message_id and len(value) <= 12000 and value.strip():
+            pieces = [(value, 1, value.count("\n") + 1)]
+        else:
+            pieces = split_section(value)
+        for part, first, last in pieces:
             db.add(
                 DesignChunk(
                     source_id=values["id"],
@@ -220,6 +229,26 @@ def store_message(db, project_id, message_id):
     )
 
 
+def upload_document_ids(db, job):
+    if "document_ids" in job.payload or job.status != "completed":
+        return job.payload.get("document_ids", [])
+    # Older upload jobs stored only the file name. Resolve an unambiguous
+    # legacy document and otherwise let the caller select its exact document ID.
+    legacy = [
+        doc.id
+        for doc in db.scalars(
+            scoped(db, SourceDocument, job.project_id).where(
+                SourceDocument.source_id.is_(None),
+                SourceDocument.name == job.payload.get("name"),
+            )
+        )
+        if not doc.metadata_json.get("upload_id")
+    ]
+    if len(legacy) != 1:
+        raise ValueError("Select the extracted document ID for this legacy upload.")
+    return legacy
+
+
 def collect(db, project_id, selection):
     docs = scoped(db, SourceDocument, project_id)
     jobs = scoped(db, IngestionJob, project_id).where(IngestionJob.kind == "document")
@@ -231,7 +260,7 @@ def collect(db, project_id, selection):
     if selection is not None:
         ids = set(selection)
         for job in selected_jobs:
-            ids.update(job.payload.get("document_ids", []))
+            ids.update(upload_document_ids(db, job))
         docs = docs.where(SourceDocument.id.in_(ids))
     source_ids = []
     indexed_paths = set()

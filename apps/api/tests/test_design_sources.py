@@ -34,3 +34,12 @@ def test_chunks_overlap_without_losing_long_lines_or_source_coordinates():
     assert all(first == last == 2 for _, first, last in parts[1:-1])
     for (left, *_), (right, *_) in itertools.pairwise(parts):
         assert left[-200:] in right[:1000]
+
+
+def test_redaction_preserves_code_lines_and_pdf_page_delimiters():
+    from galvanise.services.ingestion import redact
+
+    original = "before\n-----BEGIN EC PRIVATE KEY-----\nabc\fdef\n-----END EC PRIVATE KEY-----\nafter"
+    cleaned = redact(original)
+    assert cleaned.count("\n") == original.count("\n") and cleaned.count("\f") == 1
+    assert "abc" not in cleaned and "def" not in cleaned

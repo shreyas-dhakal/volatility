@@ -387,3 +387,160 @@ def test_concurrent_duplicate_request_is_one_run(api):
 )
 def test_correction_stage(text, stage):
     assert service.correction_stage(text) == stage
+
+
+def test_narrower_selection_excludes_prior_uploads_from_model_context(api, monkeypatch):
+    client, url, _sessions = api
+    root = url.removesuffix("/design-engine")
+    ids = []
+    for name in ("first.txt", "second.txt"):
+        ids.append(
+            client.post(
+                root + "/documents", files={"file": (name, name.encode())}
+            ).json()["id"]
+        )
+        assert ingestion.process_next_job()
+    analyze(client, url)
+    assert worker.process_next_run()
+    old = client.get(url).json()["revision"]
+
+    async def narrowed(**arguments):
+        assert arguments["base"] is None
+        assert "first.txt" not in str(arguments["chunks"])
+        return await generate(**arguments)
+
+    monkeypatch.setattr(worker, "generate", narrowed)
+    analyze(client, url, "narrower", selected_upload_ids=ids[1:])
+    assert worker.process_next_run()
+    view = client.get(url).json()
+    assert view["run"]["status"] == "completed", view
+    assert view["revision"]["parent_revision_id"] == old["id"]
+
+
+def test_provider_and_sql_exceptions_do_not_store_secret_parameters():
+    import httpx
+    from openai import BadRequestError
+    from sqlalchemy.exc import StatementError
+
+    response = httpx.Response(400, request=httpx.Request("POST", "https://example.org"))
+    provider = BadRequestError(
+        "private response text", response=response, body={"detail": "private"}
+    )
+    database = StatementError(
+        "statement failed", "UPDATE ..", {"secret": "private"}, ValueError()
+    )
+    assert (
+        worker.failure_message(provider)
+        == "BadRequestError: Model service returned HTTP 400."
+    )
+    assert (
+        worker.failure_message(database) == "StatementError: Design persistence failed."
+    )
+    assert worker.failure_message(ValueError("fabricated citation")).endswith(
+        "fabricated citation"
+    )
+
+
+def test_long_correction_is_a_single_citable_utterance(api, monkeypatch):
+    client, url, sessions = api
+    analyze(client, url)
+    worker.process_next_run()
+    old = client.get(url).json()["revision"]
+    text = (
+        "The original policy had several variants. " * 260
+        + "All sites will now use one tariff."
+    )
+    assert 4800 < len(text) <= 12000
+    msg, _ = add_message(client, url, sessions, text)
+    run = client.post(
+        url + "/revise",
+        json={
+            "base_revision_id": old["id"],
+            "correction_message_id": msg,
+            "idempotency_key": "full correction",
+        },
+    ).json()
+    captured = {}
+
+    async def record(**args):
+        captured.update(args["correction"])
+        return await generate(**args)
+
+    monkeypatch.setattr(worker, "generate", record)
+    assert worker.process_next_run()
+    assert client.get(url).json()["run"]["id"] == run["id"]
+    assert captured["text"] == text
+    chunk = client.get(url + "/chunks/" + captured["chunk_id"]).json()
+    assert chunk["text"] == text and chunk["locator"]["message_id"] == msg
+
+
+def test_archived_pdf_pages_and_manifest_of_unreadable_and_unsupported_members(
+    api, monkeypatch
+):
+    from io import BytesIO
+    from zipfile import ZipFile
+
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    pdf = PdfWriter()
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    for label in ("First page", "", "Third page"):
+        page = pdf.add_blank_page(width=200, height=200)
+        if label:
+            stream = DecodedStreamObject()
+            stream.set_data(f"BT /F1 12 Tf 10 100 Td ({label}) Tj ET".encode())
+            page[NameObject("/Contents")] = pdf._add_object(stream)
+            page[NameObject("/Resources")] = DictionaryObject(
+                {
+                    NameObject("/Font"): DictionaryObject(
+                        {NameObject("/F1"): pdf._add_object(font)}
+                    )
+                }
+            )
+    pdf_content, archive_content = BytesIO(), BytesIO()
+    pdf.write(pdf_content)
+    with ZipFile(archive_content, "w") as archive:
+        archive.writestr("docs/rules.pdf", pdf_content.getvalue())
+        archive.writestr("src/gate.py", "pass\n")
+        archive.writestr("assets/logo.png", b"logo")
+        archive.writestr("bad.txt", bytes([255]))
+    client, url, _ = api
+    upload = client.post(
+        url.removesuffix("/design-engine") + "/documents",
+        files={"file": ("parking.zip", archive_content.getvalue())},
+    ).json()
+    assert ingestion.process_next_job()
+    seen = []
+
+    async def capture(**args):
+        seen.extend(args["chunks"])
+        return await generate(**args)
+
+    monkeypatch.setattr(worker, "generate", capture)
+    analyze(client, url, selected_upload_ids=[upload["id"]])
+    worker.process_next_run()
+    view = client.get(url).json()
+    assert view["run"]["status"] == "completed", view
+    assert {
+        m["path"]: m["status"]
+        for m in view["revision"]["snapshot"]["manifest"]
+        if "path" in m
+    } == {
+        "docs/rules.pdf": "partially analyzed",
+        "src/gate.py": "analyzed",
+        "bad.txt": "unreadable",
+        "assets/logo.png": "unsupported",
+    }
+    pages = [
+        (c["locator"]["page"], c["text"])
+        for c in seen
+        if c["locator"].get("path") == "docs/rules.pdf"
+    ]
+    assert pages == [(1, "First page"), (3, "Third page")]
