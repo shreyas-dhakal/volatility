@@ -71,7 +71,7 @@ def bind_records(snapshot, changes):
             if kind == "actors"
             else ("kind", "description")
         )
-        return (kind, *(normalized(row[field]).casefold() for field in fields))
+        return (kind, *(normalized(row[field]) for field in fields))
 
     for kind in ("actors", "implementation_findings"):
         observations.update((fact_key(kind, row), row["id"]) for row in snapshot[kind])
@@ -116,9 +116,9 @@ def bind_records(snapshot, changes):
     return resolve(changes, aliases)
 
 
-def upsert(snapshot, changes):
+def upsert(snapshot, changes, catalog=None):
     candidate = deepcopy(snapshot)
-    resolved = bind_records(snapshot, changes)
+    resolved = bind_records(catalog or snapshot, changes)
     for kind in COLLECTIONS:
         indexed = {row["id"]: row for row in candidate[kind]}
         for row in resolved.get(kind, []):
@@ -128,25 +128,30 @@ def upsert(snapshot, changes):
                 row["evidence"] = list(
                     {(c["chunk_id"], c["excerpt"]): c for c in citations}.values()
                 )
+            if previous and kind == "contracts":
+                operations = {op["id"]: op for op in previous["operations"]}
+                operations.update((op["id"], op) for op in row["operations"])
+                row["operations"] = list(operations.values())
             indexed[row["id"]] = row
         candidate[kind] = list(indexed.values())
     for retire in resolved.get("retire", []):
         found = False
-        for kind in (
-            "components",
-            "contracts",
-            "dependencies",
-            "walkthroughs",
-            "change_probes",
-            "questions",
-            "findings",
-        ):
+        for kind in (field for field in COLLECTIONS if field in changes):
             rows = candidate[kind]
             remaining = [r for r in rows if r["id"] != retire["id"]]
             if len(remaining) != len(rows):
                 candidate[kind] = remaining
                 found = True
                 break
+        if not found and "contracts" in changes:
+            for contract in candidate["contracts"]:
+                remaining = [
+                    op for op in contract["operations"] if op["id"] != retire["id"]
+                ]
+                if len(remaining) < len(contract["operations"]):
+                    contract["operations"] = remaining
+                    found = True
+                    break
         if not found:
             raise ValueError(f"Cannot retire unknown or protected ID {retire['id']}.")
         message = f"Retired {retire['id']}. {retire['reason']}"
@@ -161,3 +166,78 @@ def upsert(snapshot, changes):
             }
         )
     return candidate
+
+
+def reference_ids(value):
+    if isinstance(value, list):
+        for item in value:
+            yield from reference_ids(item)
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "evidence":
+                continue
+            if key.endswith("_id") and item:
+                yield item
+            elif key.endswith("_ids") or key == "owns":
+                yield from item
+            else:
+                yield from reference_ids(item)
+
+
+def reuse_candidates(base, chunks):
+    """Reuse identity only for proposals with provenance in the new selection.
+
+    Start a fresh snapshot. Prior rows are suggestions to the provider, never
+    carried forward automatically. Filter direct citations, then retain derived
+    records only when their references still resolve back to supported facts.
+    """
+    text = {c["id"]: normalized(c["text"]) for c in chunks}
+    filtered = {field: [] for field in COLLECTIONS}
+    anchored = set()
+    for field in COLLECTIONS:
+        for row in base[field]:
+            retained = [
+                c
+                for c in row["evidence"]
+                if c["chunk_id"] in text
+                and normalized(c["excerpt"]) in text[c["chunk_id"]]
+            ]
+            if retained or not row["evidence"]:
+                filtered[field].append(row | {"evidence": retained})
+            if retained:
+                anchored.add(row["id"])
+    references = {r["id"]: set(reference_ids(r)) for _, r in all_rows(filtered)}
+    for contract in filtered["contracts"]:
+        for operation in contract["operations"]:
+            references[operation["id"]].add(contract["id"])
+    reachable = anchored.copy()
+    while True:
+        next_ids = reachable | {
+            key for key, deps in references.items() if deps & reachable
+        }
+        if next_ids == reachable:
+            break
+        reachable = next_ids
+    while True:
+        valid = {
+            identity for identity in reachable if references[identity] <= reachable
+        }
+        if valid == reachable:
+            break
+        reachable = valid
+    return {
+        field: [row for row in rows if row["id"] in reachable]
+        for field, rows in filtered.items()
+    }
+
+
+def with_candidates(snapshot, candidates, fields):
+    if not candidates:
+        return snapshot
+    result = dict(snapshot)
+    for field in fields:
+        if field in COLLECTIONS:
+            rows = {r["id"]: r for r in candidates[field]}
+            rows.update((r["id"], r) for r in snapshot[field])
+            result[field] = list(rows.values())
+    return result

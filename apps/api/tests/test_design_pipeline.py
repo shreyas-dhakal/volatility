@@ -102,3 +102,323 @@ async def test_fixed_tariff_and_independent_receipt(monkeypatch):
     assert (
         len(probe["predicted_edit_ids"]) == 2 and len(probe["predicted_owner_ids"]) == 1
     )
+
+
+async def altered(monkeypatch, transform, **options):
+    provider = ParkingModel()
+
+    async def call(stage, context):
+        response = await provider(stage, context)
+        transform(stage, context, response)
+        return response
+
+    monkeypatch.setattr(pipeline, "call_model", call)
+    return await run(**options)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid",
+    ["exact", "allowlist", "source", "crossing", "operation", "owner", "duplicate"],
+)
+async def test_invalid_output_gets_one_targeted_repair(monkeypatch, invalid):
+    attempts = []
+    stages = {
+        "exact": "inventory",
+        "allowlist": "inventory",
+        "source": "volatility",
+        "crossing": "walkthroughs",
+        "operation": "boundaries",
+        "owner": "boundaries",
+        "duplicate": "boundaries",
+    }
+
+    def inject(stage, context, response):
+        if stage != stages[invalid]:
+            return
+        attempts.append(context.get("repair"))
+        if invalid == "exact":
+            response["actors"][0]["evidence"][0]["excerpt"] = "north charges hourly"
+        elif invalid == "allowlist":
+            response["actors"][0]["evidence"][0]["chunk_id"] = "excluded-source"
+        elif invalid == "source":
+            response["volatilities"][0]["status"] = "user_confirmed"
+        elif invalid == "crossing":
+            response["walkthroughs"][0]["steps"][0].update(
+                operation_id=None, dependency_id=None, coverage_gap="Undeclared."
+            )
+        elif invalid == "operation":
+            response["dependencies"][0]["operation_id"] = "missing-operation"
+        elif invalid == "owner":
+            response["components"][0]["owns"] = response["components"][1]["owns"]
+        else:
+            response["components"][1]["id"] = response["components"][0]["id"]
+
+    with pytest.raises(ValueError, match="after one repair"):
+        await altered(monkeypatch, inject)
+    first, second = attempts
+    assert first is None and second["diagnostics"] and second["previous_response"]
+
+
+@pytest.mark.asyncio
+async def test_repair_can_publish_and_null_question_alternatives(monkeypatch):
+    def modify(stage, context, response):
+        if stage == "volatility":
+            decision = response["volatilities"][0]
+            response["questions"] = [
+                {
+                    "id": "q",
+                    "evidence": [],
+                    "question": "Who chooses a tariff?",
+                    "target_ids": [decision["id"]],
+                    "alternatives": None,
+                    "decision_impact": "Determines whether sites select a tariff.",
+                }
+            ]
+            if "repair" not in context:
+                response["questions"][0]["target_ids"] = ["unknown"]
+
+    result = await altered(monkeypatch, modify)
+    assert len(result["questions"]) == 1
+    assert result["questions"][0]["target_ids"] == [result["volatilities"][0]["id"]]
+
+
+@pytest.mark.asyncio
+async def test_missing_case_allowed_with_explicit_gap(monkeypatch):
+    def disclose(stage, context, response):
+        if stage == "walkthroughs":
+            case = response["walkthroughs"].pop()["use_case_id"]
+            response["findings"].append(
+                {
+                    "id": "gap",
+                    "code": "coverage_gap",
+                    "target_ids": [case],
+                    "severity": "warning",
+                    "evidence": [],
+                    "message": "The recovery contract is unresolved.",
+                }
+            )
+
+    result = await altered(monkeypatch, disclose)
+    assert result["walkthroughs"] == []
+    assert result["findings"][0]["target_ids"] == [result["use_cases"][0]["id"]]
+
+
+@pytest.mark.asyncio
+async def test_inventory_covers_every_chunk_merging_equal_facts_and_exact_whitespace(
+    monkeypatch,
+):
+    from galvanise.design_engine import context as retrieval
+
+    monkeypatch.setattr(retrieval, "BATCH_CHARS", 1000)
+    chunks = [source(PARKING_TEXT + " " * 650, f"page-{i}") for i in range(4)]
+
+    def normalize(stage, context, response):
+        if stage == "inventory":
+            for row in response["implementation_findings"]:
+                row["evidence"][0]["excerpt"] = row["evidence"][0]["excerpt"].replace(
+                    " ", "\n\t"
+                )
+
+    snapshot = await altered(monkeypatch, normalize, chunks=chunks)
+    assert len(snapshot["implementation_findings"]) == 3
+    for observation in snapshot["implementation_findings"]:
+        assert {c["chunk_id"] for c in observation["evidence"]} == {
+            c["id"] for c in chunks
+        }
+
+
+@pytest.mark.asyncio
+async def test_no_name_join_and_reviewer_can_address_structural_findings(monkeypatch):
+    def revise(stage, context, response):
+        if stage == "boundaries":
+            component = response["components"][2]
+            response["components"].append(
+                component
+                | {"id": "extra", "responsibility": "Print archived receipts."}
+            )
+        elif stage == "review":
+            finding = next(
+                f
+                for f in context["prior"]["findings"]
+                if f["code"] == "overdecomposition"
+            )
+            response["retire"] = [
+                {
+                    "id": finding["target_ids"][0],
+                    "reason": "No archived receipt workflow exists.",
+                }
+            ]
+
+    snapshot = await altered(monkeypatch, revise)
+    assert len([c for c in snapshot["components"] if c["name"] == "Receipt"]) == 1
+    assert any(f["code"] == "revision" for f in snapshot["findings"])
+    assert not any(f["code"] == "overdecomposition" for f in snapshot["findings"])
+
+
+@pytest.mark.asyncio
+async def test_no_measurements_in_change_probes(monkeypatch):
+    def measure(stage, context, response):
+        if stage == "walkthroughs":
+            response["change_probes"][0]["leaks"] = [
+                {
+                    "component_id": response["change_probes"][0]["predicted_owner_ids"][
+                        0
+                    ],
+                    "reason": "Our benchmarks measured a 50% improvement.",
+                }
+            ]
+
+    with pytest.raises(ValueError, match="predictions"):
+        await altered(monkeypatch, measure)
+
+
+@pytest.mark.asyncio
+async def test_incompatible_checkpoint_restarts(monkeypatch):
+    model = ParkingModel()
+    monkeypatch.setattr(pipeline, "call_model", model)
+    saved = {}
+    result = await run(
+        save_checkpoint=lambda stage, checkpoint: saved.update({stage: checkpoint})
+    )
+    model.stages.clear()
+    duplicate = await run(
+        chunks=[source(DUPLICATE_RECEIPT_TEXT)], checkpoint=saved["review"]
+    )
+    assert model.stages[0] == "inventory"
+    assert result["findings"] != duplicate["findings"]
+
+
+@pytest.mark.asyncio
+async def test_reanalysis_rebuilds_from_selected_sources_without_losing_retained_ids(
+    monkeypatch,
+):
+    from copy import deepcopy
+
+    monkeypatch.setattr(pipeline, "call_model", ParkingModel())
+    initial = await run([source(chunk_id="keep"), source(chunk_id="excluded")])
+    old = deepcopy(initial)
+    retained = await run([source(chunk_id="keep")], base=initial)
+    assert [r["id"] for r in retained["components"]] == [
+        r["id"] for r in old["components"]
+    ]
+    assert {
+        c["chunk_id"]
+        for r in retained["implementation_findings"]
+        for c in r["evidence"]
+    } == {"keep"}
+    fixed = await run([source(FIXED_TARIFF_CODE, "fixed-code")], base=retained)
+    assert all(v["status"] == "hypothesis" for v in fixed["volatilities"])
+    assert {
+        c["chunk_id"] for r in fixed["implementation_findings"] for c in r["evidence"]
+    } == {"fixed-code"}
+    assert initial == old
+
+
+@pytest.mark.asyncio
+async def test_correction_retires_superseded_goal_and_decision(monkeypatch):
+    monkeypatch.setattr(pipeline, "call_model", ParkingModel())
+    base = await run()
+    old_case = base["use_cases"][0]["id"]
+    old_price = base["volatilities"][0]["id"]
+    note = {
+        "id": "note",
+        "text": CORRECTION_TEXT,
+        "locator": {"kind": "message", "message_id": "m", "role": "user"},
+    }
+
+    def replace(stage, context, response):
+        if stage == "use_cases":
+            response["use_cases"][0].update(
+                id="new-goal", outcome="Exit under a common tariff."
+            )
+            response["retire"] = [
+                {"id": old_case, "reason": "Operator replaced the prior goal."}
+            ]
+        if stage == "volatility":
+            response["volatilities"][0]["id"] = "shared-rule"
+            response["retire"] = [
+                {"id": old_price, "reason": "Operator specified a shared tariff."}
+            ]
+        if stage == "walkthroughs":
+            response["retire"] = [
+                {
+                    "id": base["walkthroughs"][0]["id"],
+                    "reason": "Trace the replacement goal.",
+                },
+                {
+                    "id": base["change_probes"][0]["id"],
+                    "reason": "Probe the shared rule.",
+                },
+            ]
+
+    result = await altered(
+        monkeypatch,
+        replace,
+        chunks=[source(), note],
+        base=base,
+        start_stage="use_cases",
+        correction={"chunk_id": "note", "text": CORRECTION_TEXT},
+    )
+    assert old_case not in {r["id"] for r in result["use_cases"]}
+    assert old_price not in {r["id"] for r in result["volatilities"]}
+    assert result["walkthroughs"][0]["use_case_id"] == result["use_cases"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_stage_cannot_cite_supplied_project_chunks_outside_call(monkeypatch):
+    from galvanise.design_engine import context as retrieval
+
+    material = [source(), source("An excluded original excerpt.", "other")]
+    monkeypatch.setattr(retrieval, "RETRIEVAL_CHARS", len(PARKING_TEXT))
+
+    def cite_excluded(stage, context, response):
+        if stage == "volatility":
+            assert "other" not in [c["id"] for c in context["chunks"]]
+            response["volatilities"][0]["evidence"] = [
+                {"chunk_id": "other", "excerpt": "An excluded original excerpt."}
+            ]
+
+    with pytest.raises(ValueError, match="after one repair"):
+        await altered(monkeypatch, cite_excluded, chunks=material)
+
+
+@pytest.mark.asyncio
+async def test_stage_rejects_unexplained_review_changes(monkeypatch):
+    def material_change(stage, context, response):
+        if stage == "review":
+            old = context["prior"]["components"][0]
+            response["components"] = [old | {"responsibility": "Retain audit records."}]
+
+    with pytest.raises(ValueError, match="revision finding"):
+        await altered(monkeypatch, material_change)
+
+
+@pytest.mark.asyncio
+async def test_model_uses_design_override_and_structured_stage_output(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from galvanise.agents import client
+    from galvanise.config import settings
+    from galvanise.design_engine import model
+    from galvanise.design_engine.schemas import Inventory
+
+    monkeypatch.setattr(settings, "openai_api_key", "local-test")
+    monkeypatch.setattr(settings, "openai_model", "")
+    monkeypatch.setattr(settings, "design_model", "design-test")
+    parse = AsyncMock(
+        return_value=SimpleNamespace(
+            status="completed",
+            output_parsed=Inventory(actors=[], implementation_findings=[]),
+        )
+    )
+    connection = AsyncMock()
+    connection.__aenter__.return_value = SimpleNamespace(
+        responses=SimpleNamespace(parse=parse)
+    )
+    monkeypatch.setattr(client, "AsyncOpenAI", lambda **_: connection)
+    output = await model.call_model("inventory", {"chunks": []})
+    assert output == {"actors": [], "implementation_findings": []}
+    request = parse.await_args.kwargs
+    assert request["model"] == "design-test" and request["text_format"] is Inventory

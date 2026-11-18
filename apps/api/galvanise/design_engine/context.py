@@ -84,7 +84,7 @@ def terms(text):
 VOCABULARY = {
     "inventory": "current implementation actor resource observes workflow",
     "use_cases": "actor trigger workflow goal outcome except fails",
-    "volatility": "changes policy tariff differences customer sites alternatives vendors assumptions",
+    "volatility": "changes policy differences customer installation alternatives vendors assumptions",
     "boundaries": "ownership responsibility rule contract access failure policy driver",
     "walkthroughs": "exception outcome failure contract decision alternative change",
     "review": "exception contradiction failure duplicated decision leak uncertainty",
@@ -123,6 +123,7 @@ def relevant_chunks(stage, chunks, snapshot, correction):
         if len(c["text"]) > remaining:
             if not selected:
                 selected.append(c | {"text": c["text"][:remaining]})
+                break
             continue
         selected.append(c)
         remaining -= len(c["text"])
