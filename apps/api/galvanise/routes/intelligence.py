@@ -70,7 +70,7 @@ async def chat(project_id:str,conversation_id:str,body:ChatInput,request:Request
     else:
         client = configured_client()
         frames = stream_chat(client, db, project_id, conversation_id, user, body.content,
-                             request, revision=revision)
+                             request, revision=None if design_chat.requests_existing_workflow(body.content) else revision)
     return StreamingResponse(frames,media_type='text/event-stream',headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
 
 

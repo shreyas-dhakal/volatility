@@ -7,7 +7,9 @@ from galvanise.models import Message
 
 
 def command(content):
-    text = content.strip().lower().rstrip(".!").removeprefix("please ").strip()
+    text = content.strip().casefold().rstrip(".!?").strip()
+    text = re.sub(r"^(?:(?:can|could|would) you |please )+", "", text)
+    text = text.removesuffix(" for me").strip()
     if re.fullmatch(
         r"(?:design|redesign|analy[sz]e the design of) (?:this |the |my )?(?:system|project)",
         text,
@@ -24,6 +26,19 @@ def command(content):
     ):
         return "revise_design"
     return None
+
+
+def requests_existing_workflow(content):
+    """An explicit knowledge/graph command remains available after design publication."""
+    return bool(
+        re.match(
+            r"^(?:please )?(?:create|record|save|extract|generate|map|trace|discover|evaluate) "
+            r"(?:the |a |an )?(?:business |project |stakeholder |architecture |technical |change )?"
+            r"(?:requirements?|decisions?|drivers?|questions?|hypotheses|candidates?|graphs?|scenarios?|answers?|dependencies|code)\b",
+            content.strip(),
+            re.IGNORECASE,
+        )
+    )
 
 
 def grounding(snapshot, question, limit=60000):
