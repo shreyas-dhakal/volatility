@@ -1,0 +1,96 @@
+{
+  "input": "Synthetic North Quay parking operations brief\nA driver presents a ticket at the exit. The exit controller requests a price,\ntakes payment, prints a receipt for the amount paid, and opens the gate.\nNorth charges two credits per hour. South charges five credits for each stay.\nNorth uses the Elm gate and South uses the Ash gate. If payment is declined,\nleave the gate closed and allow a second payment attempt.\nOnly the pricing policy calculates the amount. The receipt accepts the supplied\namount. Operators want to explore adding a weekend cap without changing\nthe receipt format, payment handling, or gate protocol.\n",
+  "model": "gpt-6-luna",
+  "published_at": "2026-11-18T01:14:11.760082",
+  "revision_id": "ff8501d1-464d-4588-bf90-c0a3f401a477",
+  "run_status": "completed",
+  "calls_per_stage": {
+    "inventory": 1,
+    "use_cases": 1,
+    "volatility": 1,
+    "boundaries": 1,
+    "walkthroughs": 2,
+    "review": 1
+  },
+  "repairs": [
+    {
+      "stage": "walkthroughs",
+      "diagnostic": "Walkthrough 96a20e8a-2308-450b-93c6-13b101dbc995 must cover main and exception paths ['If payment is declined, the gate remains closed and the driver may make a second payment attempt.', 'main']."
+    }
+  ],
+  "intermediate_citation_errors": [],
+  "published_citation_errors": [],
+  "semantic_review_method": "Separate structured model assessment of the published revision against the synthetic brief and the fixture's expected change impact.",
+  "semantic_review": {
+    "source_grounding_errors": [],
+    "unsupported_volatility_claims": [],
+    "incorrect_change_impact_predictions": [
+      {
+        "entity_id": "aaf60364-0ce7-4bce-bb80-045658272bf7",
+        "explanation": "The weekend-cap probe predicts a possible Exit Coordinator edit and lists it as a predicted edit/leak. The stated change impact is limited to Pricing Policy; consuming its output does not require editing the coordinator or receipt, payment, or gate code."
+      },
+      {
+        "entity_id": "82a5b825-bb8c-405a-bd39-0a73719eeaa3",
+        "explanation": "This finding repeats the incorrect prediction that the Exit Coordinator may need an edit for the weekend-cap change. Only Pricing Policy should be predicted to change."
+      },
+      {
+        "entity_id": "6cf9547d-e2e8-5381-996b-a8733838a96d",
+        "explanation": "This finding labels the weekend-cap change as reaching outside its primary owner because of the coordinator edit. That predicted edit is incorrect; the change is contained within Pricing Policy."
+      }
+    ]
+  },
+  "reviewed_records": [
+    {
+      "id": "aaf60364-0ce7-4bce-bb80-045658272bf7",
+      "evidence": [
+        {
+          "chunk_id": "e905ce20-54d4-420e-acfe-e33fb87933bf",
+          "excerpt": "Operators want to explore adding a weekend cap without changing\nthe receipt format, payment handling, or gate protocol."
+        }
+      ],
+      "volatility_id": "18223584-e332-4422-bf19-61fa70f0ae87",
+      "change": "Design prediction, not execution: adding a weekend cap would require an edit to Pricing Policy. The Exit Coordinator may also need an edit if it must newly provide weekend time context; the brief does not establish whether that context is already available. Receipt printing, payment handling, and gate access are expected to remain unchanged.",
+      "predicted_owner_ids": [
+        "9eba36b5-cc8d-42e5-8d51-9e802ea7305a"
+      ],
+      "predicted_edit_ids": [
+        "9eba36b5-cc8d-42e5-8d51-9e802ea7305a",
+        "776d748d-9b00-49bc-85c9-c746ea1e58fb"
+      ],
+      "leaks": [
+        {
+          "component_id": "776d748d-9b00-49bc-85c9-c746ea1e58fb",
+          "reason": "Conditional containment leak: if the coordinator must newly provide weekend time context, it may also need an edit."
+        }
+      ]
+    },
+    {
+      "id": "82a5b825-bb8c-405a-bd39-0a73719eeaa3",
+      "evidence": [
+        {
+          "chunk_id": "e905ce20-54d4-420e-acfe-e33fb87933bf",
+          "excerpt": "Operators want to explore adding a weekend cap without changing\nthe receipt format, payment handling, or gate protocol."
+        }
+      ],
+      "code": "change_containment",
+      "severity": "info",
+      "message": "Revision: the weekend-cap probe now identifies the Exit Coordinator as a possible edit as well as a conditional leak, because it may need to provide weekend time context. Whether that context is already available is not specified. Pricing Policy remains the predicted owner; the brief says receipt format, payment handling, and gate protocol should remain unchanged.",
+      "target_ids": [
+        "aaf60364-0ce7-4bce-bb80-045658272bf7",
+        "776d748d-9b00-49bc-85c9-c746ea1e58fb",
+        "9eba36b5-cc8d-42e5-8d51-9e802ea7305a"
+      ]
+    }
+  ],
+  "component_names": {
+    "776d748d-9b00-49bc-85c9-c746ea1e58fb": "Exit Coordinator",
+    "9eba36b5-cc8d-42e5-8d51-9e802ea7305a": "Pricing Policy",
+    "15b6231b-f45a-4042-86db-0808d5283149": "Payment Handling",
+    "f620c4f4-5532-4e4b-aab6-421c05550319": "Receipt Printer",
+    "4a64b3b4-148e-4910-911a-107f7ff5dba9": "Gate Access"
+  },
+  "decision_names": {
+    "55d30818-8808-44b0-a6ee-f9d5c130f121": "The pricing rule differs by parking area: North uses an hourly rate, while South charges per stay.",
+    "18223584-e332-4422-bf19-61fa70f0ae87": "Whether to add a weekend cap, and what cap rule to use, is unresolved; the exploration is intended to leave the receipt format, payment handling, and gate protocol unchanged."
+  }
+}
