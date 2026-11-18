@@ -1,1 +1,1 @@
-{"name":"@galvanise/web","version":"0.1.0","private":true,"scripts":{"dev":"next dev --webpack","build":"next build --webpack","start":"next start","test":"vitest run"},"dependencies":{"@clerk/nextjs":"^7.10.1","lucide-react":"^1.74.0"}}
+{"name":"@galvanise/web","version":"0.1.0","private":true,"scripts":{"dev":"next dev --webpack","build":"next build --webpack","start":"next start","test":"vitest run","test:e2e":"node --test e2e/design-engine.cjs"},"dependencies":{"@clerk/nextjs":"^7.10.1","lucide-react":"^1.74.0"},"devDependencies":{"playwright":"^1.63.0"}}
