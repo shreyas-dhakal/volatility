@@ -64,14 +64,9 @@ def grounding(snapshot, question, limit=60000):
     )
 
 
-def perform(operation, db, project_id, user, conversation_id, content, revision):
-    from galvanise.design_engine import service
+async def perform(operation, db, project_id, user, conversation_id, content, revision):
+    from galvanise.agents.tools import invoke
 
-    if operation != "analyze_design" and not revision:
-        answer = "Design the system first so this operation has a published architecture to use."
-        result = {}
-    else:
-        answer = None
     message = Message(
         project_id=project_id,
         conversation_id=conversation_id,
@@ -80,33 +75,25 @@ def perform(operation, db, project_id, user, conversation_id, content, revision)
     )
     db.add(message)
     db.flush()
-    if answer is None:
-        if operation == "analyze_design":
-            result = service.analyze_design(
-                db,
-                project_id,
-                user,
-                request_message_id=message.id,
-                idempotency_key=message.id,
-            )
-            answer = (
-                "System design queued. Open the design view to follow the analysis."
-            )
-        elif operation == "revise_design":
-            result = service.revise_design(
-                db,
-                project_id,
-                user,
-                base_revision_id=revision["id"],
-                correction_message_id=message.id,
-                idempotency_key=message.id,
-            )
-            answer = "Correction queued. The design view will show the revision and its changes."
-        else:
-            result = service.plan_project(
-                db, project_id, user, revision_id=revision["id"], planning_inputs={}
-            )
-            answer = "Open Project in the design view to review the activities and enter scheduling inputs."
+    if operation != "analyze_design" and not revision:
+        answer = "Design the system first so this operation has a published architecture to use."
+        result = {}
+    else:
+        result = await invoke(
+            operation,
+            "{}",
+            db,
+            project_id,
+            user,
+            user_content=content,
+            message_id=message.id,
+            revision_id=revision["id"] if revision else None,
+        )
+        answer = {
+            "analyze_design": "System design queued. Open the design view to follow the analysis.",
+            "revise_design": "Correction queued. The design view will show the revision and its changes.",
+            "plan_project": "Open Project in the design view to review the activities and enter scheduling inputs.",
+        }[operation]
     metadata = {"design_operation": operation, "result_id": result.get("id")}
     assistant = Message(
         project_id=project_id,

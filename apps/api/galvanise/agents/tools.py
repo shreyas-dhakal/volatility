@@ -20,12 +20,47 @@ class Args(BaseModel):
 NAMES={'get_project_context','list_business_decisions','list_change_drivers','create_business_decision','create_change_driver','create_business_requirement','create_volatility_hypothesis','create_stakeholder_question','get_technical_graph_summary','search_code_nodes','get_node_dependencies','find_dependency_paths','get_architecture_candidate','evaluate_change_scenario','save_stakeholder_answer','generate_architecture_candidates','map_business_to_code'}
 
 
-def definitions():
-    return [{'type':'function','name':name,'description':'Project-scoped '+name+'. For save_stakeholder_answer use node_id=known question ID, query=exact authenticated user answer; do not infer an answer. For map_business_to_code use node_id=decision ID, graph_id and query. Unused string arguments must be empty; proposal null unless creating pending knowledge.','parameters':Args.model_json_schema(),'strict':True} for name in sorted(NAMES)]
+DESIGN_TOOLS = {
+    "analyze_design": "Analyze the project evidence and queue a versioned system design.",
+    "revise_design": "Apply the current user's explicit correction to the published architecture.",
+    "plan_project": "Generate the editable activity graph for the published architecture.",
+}
 
 
-async def invoke(name, raw, db, project_id, user, client=None, user_content=None):
+def definitions(user_content=None):
+    from galvanise.agents.design_chat import command
+    allowed = command(user_content) if user_content is not None else None
+    design_tools = [
+        {"type": "function", "name": name, "description": description,
+         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+         "strict": True}
+        for name, description in DESIGN_TOOLS.items()
+        if user_content is None or name == allowed
+    ]
+    return design_tools + [{'type':'function','name':name,'description':'Project-scoped '+name+'. For save_stakeholder_answer use node_id=known question ID, query=exact authenticated user answer; do not infer an answer. For map_business_to_code use node_id=decision ID, graph_id and query. Unused string arguments must be empty; proposal null unless creating pending knowledge.','parameters':Args.model_json_schema(),'strict':True} for name in sorted(NAMES)]
+
+
+async def invoke(name, raw, db, project_id, user, client=None, user_content=None, *, message_id=None, revision_id=None):
     project=require_project(project_id,db,user)
+    if name in DESIGN_TOOLS:
+        from galvanise.agents.design_chat import command
+        from galvanise.design_engine import service
+        from galvanise.design_engine.sources import user_message
+
+        if json.loads(raw) != {} or not message_id:
+            raise ValueError("Design tools require the current authenticated chat message")
+        message = user_message(db, project_id, message_id)
+        if message.content != user_content or command(message.content) != name:
+            raise ValueError("The current message does not request this design operation")
+        if name == "analyze_design":
+            return service.analyze_design(db, project_id, user, request_message_id=message_id,
+                                          idempotency_key=message_id)
+        if not revision_id:
+            raise ValueError("Design the system first to publish an architecture")
+        if name == "revise_design":
+            return service.revise_design(db, project_id, user, base_revision_id=revision_id,
+                                         correction_message_id=message_id, idempotency_key=message_id)
+        return service.plan_project(db, project_id, user, revision_id=revision_id, planning_inputs={})
     if name not in NAMES: raise ValueError('Unknown tool')
     args=Args.model_validate_json(raw)
     records=records_for(db,project_id)

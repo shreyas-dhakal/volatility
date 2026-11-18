@@ -19,7 +19,8 @@ def event(name,data):
 async def stream_chat(client, db, project_id, conversation_id, user, content, request, revision=None):
     history=list(db.scalars(select(Message).where(Message.project_id==project_id,Message.conversation_id==conversation_id).order_by(Message.created_at.desc()).limit(24)).all())
     inputs=[{'role':m.role,'content':m.content[:6000]} for m in reversed(history) if m.role in {'user','assistant'} and m.content]
-    db.add(Message(project_id=project_id,conversation_id=conversation_id,role='user',content=content));db.commit()
+    message = Message(project_id=project_id,conversation_id=conversation_id,role='user',content=content)
+    db.add(message);db.commit()
     instructions = SYSTEM
     if revision:
         instructions = (
@@ -37,7 +38,7 @@ async def stream_chat(client, db, project_id, conversation_id, user, content, re
     try:
         # Twelve provider rounds allow sequential discovery tools plus a final answer.
         for _ in range(12):
-            kwargs={'model':settings.openai_model,'instructions':instructions,'input':inputs,'tools':[] if revision else definitions(),'stream':True,'max_output_tokens':5000,'parallel_tool_calls':False}
+            kwargs={'model':settings.openai_model,'instructions':instructions,'input':inputs,'tools':[] if revision else definitions(content),'stream':True,'max_output_tokens':5000,'parallel_tool_calls':False}
             if previous: kwargs['previous_response_id']=previous
             stream=await client.responses.create(**kwargs)
             calls=[];response_completed=False
@@ -61,7 +62,7 @@ async def stream_chat(client, db, project_id, conversation_id, user, content, re
                 raise ValueError('Design questions are read-only')
             for call in calls[:8]:
                 yield event('tool',{'name':call.name,'status':'running'})
-                try: result=await invoke(call.name,call.arguments,db,project_id,user,client,content)
+                try: result=await invoke(call.name,call.arguments,db,project_id,user,client,content,message_id=message.id,revision_id=revision["id"] if revision else None)
                 except (ValueError,KeyError) as exc: result={'error':str(exc)}
                 yield event('tool',{'name':call.name,'status':'complete','result':result})
                 if isinstance(result,dict) and result.get('record_ids'): yield event('knowledge',{'record_ids':result['record_ids']})

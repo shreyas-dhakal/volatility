@@ -62,7 +62,7 @@ async def chat(project_id:str,conversation_id:str,body:ChatInput,request:Request
     revision = current_revision(db, project_id, user)
     operation = design_chat.command(body.content)
     if operation:
-        text, message_id, metadata = design_chat.perform(
+        text, message_id, metadata = await design_chat.perform(
             operation, db, project_id, user, conversation_id, body.content, revision
         )
         frames = iter([event("design", metadata), event("delta", {"text": text}),
