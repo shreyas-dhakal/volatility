@@ -47,7 +47,7 @@ function PersonEditor({person,update,remove}:{person:Person;update:(p:Person)=>v
   const commitments=person.commitments??[];
   return <Collapsible defaultIsOpen trigger={<Text weight="semibold">{person.name||'New team member'}</Text>}>
     <VStack gap={3} paddingBlock={2}>
-      <TextInput label="Person name" value={person.name} onChange={name=>patch({name})}/>
+      <TextInput label="Person name" value={person.name??''} onChange={name=>patch({name})}/>
       <ListInput label="Person skills" value={person.skills} onChange={skills=>patch({skills})}/>
       <NumberField label="Availability (0 to 1 full-time)" value={person.availability} onChange={availability=>patch({availability})}/>
       <DateInput label="Available from" presentation="native" value={person.available_from??undefined} onChange={v=>patch({available_from:v||null})}/>
@@ -56,24 +56,25 @@ function PersonEditor({person,update,remove}:{person:Person;update:(p:Person)=>v
       {commitments.map((c,index)=>{
         const set=(change:Partial<typeof c>)=>patch({commitments:commitments.map((v,i)=>i===index?{...v,...change}:v)});
         return <VStack key={index} gap={2}>
-          <DateInput presentation="native" label="Commitment starts" value={c.start||undefined} onChange={v=>set({start:v??''})}/>
-          <DateInput presentation="native" label="Commitment ends" value={c.end||undefined} onChange={v=>set({end:v??''})}/>
+          <DateInput presentation="native" label="Commitment starts" value={c.start||undefined} onChange={v=>set({start:v??null})}/>
+          <DateInput presentation="native" label="Commitment ends" value={c.end||undefined} onChange={v=>set({end:v??null})}/>
           <NumberField label="Committed fraction" value={c.fraction} onChange={fraction=>set({fraction})}/>
           <Button label="Remove commitment" size="sm" onClick={()=>patch({commitments:commitments.filter((_,i)=>i!==index)})}/>
         </VStack>;
       })}
-      <HStack wrap="wrap" gap={2}><Button label="Add commitment" onClick={()=>patch({commitments:[...commitments,{start:'',end:'',fraction:null}]})}/>
+      <HStack wrap="wrap" gap={2}><Button label="Add commitment" onClick={()=>patch({commitments:[...commitments,{start:null,end:null,fraction:null}]})}/>
         <Button label="Remove person" variant="ghost" onClick={remove}/></HStack>
     </VStack>
   </Collapsible>;
 }
 function RosterEditor({roster,update,remove}:{roster:Roster;update:(r:Roster)=>void;remove:()=>void}){
   const patch=(change:Partial<Roster>)=>update({...roster,...change});
-  return <VStack gap={3}><TextInput label="Roster name" value={roster.name} onChange={name=>patch({name})}/>
-    {roster.people.map(p=><PersonEditor key={p.id} person={p}
-      update={next=>patch({people:roster.people.map(v=>v.id===p.id?next:v)})} remove={()=>patch({people:roster.people.filter(v=>v.id!==p.id)})}/>)}
+  const people=roster.people??[];
+  return <VStack gap={3}><TextInput label="Roster name" value={roster.name??''} onChange={name=>patch({name})}/>
+    {people.map(p=><PersonEditor key={p.id} person={p}
+      update={next=>patch({people:people.map(v=>v.id===p.id?next:v)})} remove={()=>patch({people:people.filter(v=>v.id!==p.id)})}/>)}
     <HStack gap={2} wrap="wrap">
-      <Button label="Add person" onClick={()=>patch({people:[...roster.people,{id:id('person'),name:'',skills:[],availability:null,daily_rate:null,commitments:[]}]})}/>
+      <Button label="Add person" onClick={()=>patch({people:[...people,{id:id('person'),name:'',skills:null,availability:null,daily_rate:null,commitments:[]}]})}/>
       <Button label="Remove roster" variant="ghost" onClick={remove}/>
     </HStack>
   </VStack>;
@@ -98,7 +99,7 @@ function ScheduleResults({plan}:{plan:Plan}){
         <Text>Total cost · {run.total_cost??'Unknown'}</Text>
         {run.assignments.map(a=><VStack key={a.activity_id} gap={0}>
           <Text weight="semibold">{activities.get(a.activity_id)||a.activity_id}</Text>
-          <Text>{roster?.people.find(p=>p.id===a.person_id)?.name||a.person_id} · {a.start_date} to {a.finish_date} · {a.effort_days} person-days · Cost {a.cost??'unknown'}</Text>
+          <Text>{roster?.people?.find(p=>p.id===a.person_id)?.name||a.person_id} · {a.start_date} to {a.finish_date} · {a.effort_days} person-days · Cost {a.cost??'unknown'}</Text>
         </VStack>)}
         {run.blockers.map((b,i)=><Text key={i}>{activities.get(b.activity_id)||b.activity_id} · {b.reason} {b.skills?.join(', ')}</Text>)}
         {run.warnings.map((w,i)=><Text key={i}>{w.message}</Text>)}
@@ -108,7 +109,11 @@ function ScheduleResults({plan}:{plan:Plan}){
 }
 export function ProjectPlan({revisionId,plan}:{revisionId:string;plan:Plan|null}){
   const engine=useEngine();
-  const [inputs,setInputs]=useState<Inputs>(()=>({...plan?.input,activities:plan?.input.activities??plan?.result.activities??[],rosters:plan?.input.rosters??[],scenarios:plan?.input.scenarios??['likely']}));
+  const [inputs,setInputs]=useState<Inputs>(()=>{
+    const activities=plan?.result.activities??[];
+    const defaults=scenarios.filter(s=>s==='likely'||activities.some(a=>a.effort?.[s]!=null));
+    return {...plan?.input,activities,rosters:plan?.input.rosters??[],scenarios:plan?.input.scenarios??defaults};
+  });
   const patch=(change:Partial<Inputs>)=>setInputs(prev=>({...prev,...change}));
   const activities=inputs.activities??[],rosters=inputs.rosters??[],selected=inputs.scenarios??[];
   const [assumptions,setAssumptions]=useState((inputs.assumptions??[]).join('\n'));

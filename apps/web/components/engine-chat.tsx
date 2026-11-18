@@ -13,6 +13,7 @@ import {RevisionPanel} from './engine-revision';
 import {EvidenceInspector,label} from './engine-evidence';
 import {ProjectPlan} from './engine-plan';
 
+const count=(amount:number,noun:string)=>amount+' '+noun+(amount===1?'':'s');
 const tabs=['Overview','Volatility','Architecture','Validation','Project'];
 export function ApplyCorrection({messageId}:{messageId:string}){
   const {state,start,busy,loadError}=useEngine();
@@ -54,7 +55,8 @@ export function EngineChat({objective,base,documents,jobs,refresh,openSources,me
   }
   return <VStack gap={2} paddingBlock={2}>
     {revision&&<VStack gap={0}><Text weight="semibold">System design</Text>
-      <Text type="supporting" color="secondary">{revision.snapshot.use_cases.length} use cases · {revision.snapshot.volatilities.length} decisions · {revision.snapshot.components.length} proposed components</Text>
+      {typeof revision.snapshot.use_cases[0]?.outcome==='string'&&<Text maxLines={2}>{revision.snapshot.use_cases[0].outcome}</Text>}
+      <Text type="supporting" color="secondary">{count(revision.snapshot.use_cases.length,'use case')} · {count(revision.snapshot.volatilities.length,'decision')} · {count(revision.snapshot.components.length,'proposed component')}</Text>
     </VStack>}
     {run&&isActive&&<Text role="status">Design {run.status} · {label(run.stage)}</Text>}
     {failed&&<VStack gap={1}><Text role="alert">Design run {run.status} · {run.error||'The revision could not be published.'}</Text>

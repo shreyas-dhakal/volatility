@@ -23,12 +23,12 @@ export type Activity = {
   id:string;deliverable:string;related_ids:string[];predecessors:string[];skills:string[]|null;
   effort:Partial<Record<EffortCase,number|null>>;estimate_source?:string|null;estimate_confirmed?:boolean;sources?:Evidence[];
 };
-export type Commitment = {start:CalendarDate|'';end:CalendarDate|'';fraction:number|null};
+export type Commitment = {start:CalendarDate|null;end:CalendarDate|null;fraction:number|null};
 export type Person = {
-  id:string;name:string;skills:string[];availability:number|null;daily_rate:number|null;
+  id:string;name?:string|null;skills:string[]|null;availability:number|null;daily_rate:number|null;
   available_from?:CalendarDate|null;available_until?:CalendarDate|null;commitments:Commitment[];
 };
-export type Roster = {id:string;name:string;people:Person[]};
+export type Roster = {id:string;name?:string|null;people?:Person[]|null};
 export type Inputs = {start_date?:CalendarDate;activities?:Activity[];rosters?:Roster[];scenarios?:EffortCase[];assumptions?:string[]};
 type Warning = {message:string; code:string};
 type Schedule = {
