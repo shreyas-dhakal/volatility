@@ -75,7 +75,7 @@ def main() -> None:
                                           '--port', str(args.api_port)], cwd=api, start_new_session=True))
         web_env = {**os.environ, 'API_URL': f'http://127.0.0.1:{args.api_port}'}
         children.append(subprocess.Popen(['npm', 'run', 'dev', '--workspace', '@galvanise/web', '--',
-                                          '--hostname', '127.0.0.1', '--port', str(web_port)],
+                                          '--hostname', address.hostname, '--port', str(web_port)],
                                          cwd=ROOT, env=web_env, start_new_session=True))
         print(f'\nGalvanise: {web_url}\nAPI docs: http://127.0.0.1:{args.api_port}/docs\nCtrl-C stops these app processes; PostgreSQL data stays in Docker.\n', flush=True)
         while all(child.poll() is None for child in children):
