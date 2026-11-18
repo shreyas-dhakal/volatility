@@ -7,9 +7,6 @@ from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
-from galvanise.database import Base, engine
-from galvanise.main import app
-from galvanise.services.ingestion import process_next_job
 from parking_model import (
     CORRECTION_TEXT,
     DUPLICATE_RECEIPT_TEXT,
@@ -17,6 +14,10 @@ from parking_model import (
     PARKING_TEXT,
     ParkingModel,
 )
+
+from galvanise.database import Base, engine
+from galvanise.main import app
+from galvanise.services.ingestion import process_next_job
 
 
 def run_design_worker():

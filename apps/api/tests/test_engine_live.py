@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 
 import pytest
-from galvanise.config import settings
 from openai import AuthenticationError, OpenAI
 from pydantic import BaseModel, ConfigDict
 from test_engine_acceptance import (
@@ -18,6 +17,8 @@ from test_engine_acceptance import (
     run_design_worker,
     synthetic_project,
 )
+
+from galvanise.config import settings
 
 # A second, independent fixture with explicit ground truth for the semantic audit.
 SMOKE_TEXT = """Synthetic North Quay parking operations brief
