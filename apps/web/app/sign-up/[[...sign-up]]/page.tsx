@@ -1,6 +1,5 @@
 import {Suspense} from 'react';
 import {SignUp} from '@clerk/nextjs';
-import {redirect} from 'next/navigation';
 import AuthFrame from '../../../components/auth-frame';
 import AuthConfiguration from '../../../components/auth-configuration';
 import {clerkConfigured} from '../../../lib/auth-config';
