@@ -815,37 +815,26 @@ def test_changed_dependency_batch_allocates_new_records_atomically(client, monke
     assert stored[first[1]["id"]] == first[1]
 
 
-def test_existing_alembic_schema_supports_new_discriminators_without_migration(
-    tmp_path,
-):
-    import importlib.util
+def test_migrated_schema_preserves_design_discriminators(tmp_path, monkeypatch):
     from pathlib import Path
 
+    from alembic import command
     from alembic.autogenerate import compare_metadata
+    from alembic.config import Config
     from alembic.migration import MigrationContext
-    from alembic.operations import Operations
+    from galvanise.config import settings
     from galvanise.models import CoreUseCase, DesignValidation, Project, UseCase, User
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    migration_path = (
-        Path(__file__).parents[1] / "alembic/versions/af78127a72ed_initial_schema.py"
-    )
-    spec = importlib.util.spec_from_file_location("baseline_migration", migration_path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    migrated = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
-    with migrated.begin() as conn:
+    database_url = f"sqlite:///{tmp_path / 'migration.db'}"
+    monkeypatch.setattr(settings, "database_url", database_url)
+    config = Config()
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    command.upgrade(config, "head")
+    migrated = create_engine(database_url)
+    with migrated.connect() as conn:
         context = MigrationContext.configure(conn, opts={"compare_type": True})
-        migration.op = Operations(context)
-        migration.upgrade()
-        # Auth adds an independent mapping; design discriminators still use the same table.
-        auth_path = Path(__file__).parents[1] / "alembic/versions/8c31d29a40bf_clerk_identity_mapping.py"
-        auth_spec = importlib.util.spec_from_file_location("clerk_mapping", auth_path)
-        auth_migration = importlib.util.module_from_spec(auth_spec)
-        auth_spec.loader.exec_module(auth_migration)
-        auth_migration.op = Operations(context)
-        auth_migration.upgrade()
         assert compare_metadata(context, Base.metadata) == []
     with Session(migrated) as db:
         user = User(email="migration@example.com", name="Migrated")
