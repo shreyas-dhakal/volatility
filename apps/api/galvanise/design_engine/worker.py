@@ -141,6 +141,16 @@ def prepare(run_id, token):
             "start_stage": run.start_stage,
             "checkpoint": run.checkpoint_json,
         }
+        if (
+            parent
+            and not arguments["base"]
+            and set(parent.source_ids).intersection(run.source_ids)
+        ):
+            from .records import identity_hints
+
+            hints = identity_hints(parent.snapshot_json, chunks)
+            if hints:
+                arguments["prior_ids"] = hints
         db.commit()
         return arguments
 

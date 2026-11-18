@@ -32,7 +32,20 @@ class ParkingModel:
                 if quote in c["text"]
             ]
 
-        def existing(collection, field, value, default):
+        hints = context.get("prior_ids", [])
+
+        def existing(collection, field, value, default, evidence=()):
+            previous = [
+                h["id"]
+                for h in hints
+                if h["collection"] == collection
+                and (
+                    h["links"].get(field) == value
+                    or any(c in h["evidence"] for c in evidence)
+                )
+            ]
+            if len(previous) == 1:
+                default = previous[0]
             return next(
                 (r["id"] for r in prior.get(collection, []) if r[field] == value),
                 default,
@@ -50,14 +63,20 @@ class ParkingModel:
         ) or cite(DUPLICATE)
         correction = context.get("correction")
         changed = bool(correction and "one tariff" in correction["text"].lower())
-        actor = existing("actors", "name", "Driver", "driver")
-        case = existing("use_cases", "name", "Exit parking", "exit")
-        price = existing("volatilities", "decision", "Tariff policy", "tariff")
-        vendor = existing("volatilities", "decision", "Gate vendor", "vendor")
-        pricing = existing("components", "name", "Pricing", "pricing")
-        manager = existing("components", "name", "Exit coordinator", "exit-manager")
-        receipt = existing("components", "name", "Receipt", "receipt")
-        gate = existing("components", "name", "Gate access", "gate")
+        actor = existing("actors", "name", "Driver", "driver", case_evidence)
+        case = existing("use_cases", "name", "Exit parking", "exit", case_evidence)
+        price = existing(
+            "volatilities", "decision", "Tariff policy", "tariff", price_evidence
+        )
+        vendor = existing(
+            "volatilities", "decision", "Gate vendor", "vendor", gate_evidence
+        )
+        pricing = existing("components", "name", "Pricing", "pricing", price_evidence)
+        manager = existing(
+            "components", "name", "Exit coordinator", "exit-manager", case_evidence
+        )
+        receipt = existing("components", "name", "Receipt", "receipt", receipt_evidence)
+        gate = existing("components", "name", "Gate access", "gate", gate_evidence)
 
         if stage == "inventory":
             findings = []
@@ -69,7 +88,13 @@ class ParkingModel:
                 if quotes:
                     findings.append(
                         entity(
-                            "obs-" + key,
+                            existing(
+                                "implementation_findings",
+                                "description",
+                                quotes[0]["excerpt"],
+                                "obs-" + key,
+                                quotes,
+                            ),
                             quotes,
                             title=key.title(),
                             description=quotes[0]["excerpt"],
@@ -156,6 +181,15 @@ class ParkingModel:
         ]
 
         def operation(owner_id, fallback):
+            prior_ops = [
+                op
+                for h in hints
+                if h["collection"] == "contracts"
+                and h["links"].get("owner_id") == owner_id
+                for op in h["operation_ids"]
+            ]
+            if len(prior_ops) == 1:
+                fallback = prior_ops[0]
             return next(
                 (
                     c["operations"][0]["id"]
@@ -166,14 +200,7 @@ class ParkingModel:
             )
 
         def dependency(owner_id):
-            return next(
-                (
-                    d["id"]
-                    for d in prior.get("dependencies", [])
-                    if d["callee_id"] == owner_id
-                ),
-                "calls-" + owner_id,
-            )
+            return existing("dependencies", "callee_id", owner_id, "calls-" + owner_id)
 
         if stage == "boundaries":
             components = []
