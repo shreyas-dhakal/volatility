@@ -10,6 +10,8 @@ import {VStack,HStack,Button,Text,Heading,TextInput,TextArea,Selector,FileInput,
 import {request,post,chat,ApiError} from '../lib/api';
 import type {User,Project,Conversation,Message,Knowledge,Source,Job,Document,GraphSummary} from '../lib/types';
 import {DesignWorkspace} from './design-workspace';
+import {EngineSession} from './engine-session';
+import {ApplyCorrection,EngineChat} from './engine-chat';
 import {Brand} from './brand';
 import {GraphWorkspace} from './graph';
 import {AppIcon,NavigationItem,GitHubAction,ReviewState,evidenceLabel,fieldLabel,plainValue,navigation,toolActivity,type WorkspaceView} from './workspace-ui';
@@ -177,7 +179,7 @@ function Workspace({clerkMode=false,onSignOut,accountControl}:AuthWiring){
   </HStack>}
  </HStack>
  {error&&<VStack padding={4} hAlign="start"><ErrorNotice message={error}/><Button label="Dismiss" variant="ghost" size="sm" onClick={()=>setError('')}/></VStack>}
- {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects();setProjectId(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={6} xstyle={s.empty} gap={4} hAlign="center" vAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">Tell us what you want to improve. You can add files and code later.</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects();setProjectId(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:isChat?<VStack xstyle={s.chatContent} gap={0} paddingInline={5}>
+ {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects();setProjectId(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={6} xstyle={s.empty} gap={4} hAlign="center" vAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">Tell us what you want to improve. You can add files and code later.</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects();setProjectId(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:isChat?<EngineSession key={base} base={base} streaming={streaming}><VStack xstyle={s.chatContent} gap={0} paddingInline={5}>
  {!emptyChat&&<VStack xstyle={s.chatContent} paddingBlock={6}>
    <VStack xstyle={s.measure} gap={6}>
     {messages.map(message=>{
@@ -186,6 +188,7 @@ function Workspace({clerkMode=false,onSignOut,accountControl}:AuthWiring){
       <ChatMessageBubble variant={fromUser?'filled':'ghost'} name={fromUser?undefined:<Text weight="semibold">Galvanise</Text>} width={fromUser?undefined:'100%'}>
        <VStack gap={2} xstyle={s.messageContent}>
         <Markdown>{message.content}</Markdown>
+        {fromUser&&<ApplyCorrection messageId={message.id}/>}
         {message.metadata_json?.partial===true&&<Text type="supporting" color="secondary">Response stopped before it finished</Text>}
        </VStack>
       </ChatMessageBubble>
@@ -205,13 +208,14 @@ function Workspace({clerkMode=false,onSignOut,accountControl}:AuthWiring){
     <Heading level={1} xstyle={s.chatTitle}>What is changing in your business?</Heading>
     <Text color="secondary" xstyle={s.chatIntro}>Describe a business change or ask about your system.</Text>
    </VStack>}
-   <ChatComposer value={draft} onChange={setDraft} onSubmit={send} placeholder="Message Galvanise" elevation="none" isDisabled={!health?.ai_configured} isStopShown={streaming} onStop={()=>controller.current?.abort()} footerActions={<Button label="Add files" icon={<AppIcon icon={Upload} color="secondary"/>} size="sm" variant="ghost" onClick={()=>choose('Sources')}/>}/>
+   <EngineChat base={base} objective={project?.objective??''} documents={documents} jobs={jobs} refresh={refresh} openSources={()=>choose('Sources')} messageId={[...messages].reverse().find(m=>m.role==='user'&&!m.id.startsWith('local-'))?.id}/>
+   <ChatComposer value={draft} onChange={setDraft} onSubmit={send} placeholder="Message Galvanise" elevation="none" isDisabled={!health?.ai_configured} isStopShown={streaming} onStop={()=>controller.current?.abort()}/>
    {emptyChat&&<HStack gap={2} hAlign="center" wrap="wrap">
     <Button label="Open questions" icon={<AppIcon icon={Info} color="secondary"/>} size="sm" variant="ghost" onClick={()=>choose('Questions')}/>
    </HStack>}
    {health&&!health.ai_configured&&<HStack gap={2} hAlign="center" vAlign="center" wrap="wrap"><Text type="supporting" color="secondary">Chat needs to be set up.</Text><Button label="Open settings" size="sm" variant="ghost" onClick={()=>choose('Settings')}/></HStack>}
   </VStack>
- </VStack>:<VStack padding={6} xstyle={s.content}><VStack gap={6} xstyle={s.pageMeasure}>
+ </VStack></EngineSession>:<VStack padding={6} xstyle={s.content}><VStack gap={6} xstyle={s.pageMeasure}>
  {view==='Sources'&&<Sources legacy={!clerkMode} githubAvailable={!!health?.github_configured} base={base} user={user} sources={sources} documents={documents} jobs={jobs} graphs={graphs} busy={busy} run={run} refresh={refresh}/>}
  {['Decisions','Volatility','Questions'].includes(view)&&<><HStack hAlign="between" vAlign="center" wrap="wrap"><Heading level={1}>{view==='Decisions'?'Decisions':view==='Volatility'?'What might change':'Questions to answer'}</Heading><Button label="Find suggestions" icon={<AppIcon icon={Search} color={health?.ai_configured?'blue':'disabled'}/>} isDisabled={!health?.ai_configured} tooltip={!health?.ai_configured?'Set up chat in Settings first':undefined} isLoading={busy} onClick={()=>run(async()=>{await post(`${base}/analyse`);await refresh()})}/></HStack><Text color="secondary">Check each suggestion before keeping it. You can edit it or leave it out.</Text><KnowledgeList records={records.filter(r=>view==='Decisions'?['requirement','decision','driver','traceability','evidence'].includes(r.kind):view==='Volatility'?r.kind==='volatility':r.kind==='question')} busy={busy} patch={(r,c)=>run(()=>patch(r,c))} answer={(r,answer)=>run(async()=>{await post(`${base}/questions/${r.id}/answer`,{answer});await refresh()})} map={r=>run(async()=>{if(!graphs[0])throw new Error('Import a technical graph before linking a decision.');await post(`${base}/traceability`,{decision_id:r.id,graph_id:graphs[0].id});await refresh()})}/></>}
  {view==='Design process'&&<DesignWorkspace key={base} base={base} aiAvailable={health?health.ai_configured:null} records={records} onChange={refresh} onSettings={()=>choose('Settings')}/>}
