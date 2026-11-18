@@ -45,7 +45,7 @@ function DependencyDiagram({snapshot,names}:{snapshot:Snapshot;names:Map<string,
   },[snapshot,names]);
   return <VStack role="figure" aria-label="Component dependency diagram" gap={2}>
     <Heading level={3}>Component dependency diagram</Heading>
-    {graph.nodes.length>0&&<VStack style={{height:'22rem'}}><ReactFlow nodes={graph.nodes} edges={graph.edges}
+    {graph.nodes.length>0&&<VStack height="22rem"><ReactFlow nodes={graph.nodes} edges={graph.edges}
       nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
       fitView minZoom={0.1} maxZoom={2} zoomOnScroll={false} preventScrolling={false}>
       <Background/><Controls showInteractive={false}/>

@@ -1,5 +1,6 @@
 'use client';
 import {createContext,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
+import {CodeBlock} from '@astryxdesign/core/CodeBlock';
 import {Drawer} from '@astryxdesign/core/Drawer';
 import {Text as SourceText} from '@astryxdesign/core/Text';
 import {request} from '../lib/api';
@@ -59,7 +60,7 @@ export function EvidenceInspector({children}:{children:ReactNode}){
         <HStack hAlign="between" vAlign="center"><Heading level={2}>Source evidence</Heading><Button label="Close source" onClick={close}/></HStack>
         {error?<><Text role="alert">{error}</Text><Button label="Retry source" onClick={()=>inspect(citation)}/></>:chunk?
           <><Heading level={3}>Source location</Heading><DetailValue value={chunk.locator}/>
-            <Heading level={3}>Cited excerpt</Heading>{quote?<SourceText as="p" style={{whiteSpace:'pre-wrap'}}>{quote}</SourceText>:
+            <Heading level={3}>Cited excerpt</Heading>{quote?<CodeBlock code={quote} language="plaintext" hasLanguageLabel={false} hasLineNumbers={false} isWrapped/>:
               <Text role="alert">The cited passage could not be located in this source.</Text>}
           </>:<Text role="status">Loading source…</Text>}
       </VStack>}

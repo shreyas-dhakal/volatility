@@ -1,5 +1,5 @@
 'use client';
-import {useId,useState} from 'react';
+import {Activity,useId,useState} from 'react';
 import {Drawer} from '@astryxdesign/core/Drawer';
 import {Tab,TabList} from '@astryxdesign/core/TabList';
 import {BookOpen,Layers,Upload} from 'lucide-react';
@@ -95,10 +95,10 @@ export function EngineChat({objective,base,documents,jobs,refresh,openSources,me
           {tabs.map(name=><Tab key={name} value={name} label={name} panelId={unique+name}/>)}
         </TabList>
         {tab!=='Project'&&<VStack id={unique+tab} role="tabpanel" aria-label={tab}><RevisionPanel revision={revision} tab={tab} objective={objective}/></VStack>}
-        <VStack id={unique+'Project'} role="tabpanel" aria-label="Project" style={tab==='Project'?undefined:{display:'none'}}>
+        <Activity mode={tab==='Project'?'visible':'hidden'}><VStack id={unique+'Project'} role="tabpanel" aria-label="Project">
           {error&&<Text role="alert">{error}</Text>}
           <ProjectPlan key={revision.id+(plan?.id??'')} revisionId={revision.id} plan={plan??null}/>
-        </VStack>
+        </VStack></Activity>
       </VStack></EvidenceInspector>}
     </Drawer>
   </VStack>;
