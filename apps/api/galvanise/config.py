@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     clerk_audience: str = ""
     web_url: str = "http://localhost:3000"
     openai_api_key: str = ""
+    design_model: str = ""
     openai_model: str = "gpt-5.5"
     github_client_id: str = ""
     github_client_secret: str = ""
