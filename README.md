@@ -73,6 +73,26 @@ password authentication on both the web app and API, start the launcher with
 `AUTH_MODE=legacy ./scripts/run-local.sh`. For Clerk, follow the [Clerk setup
 guide](docs/CLERK_DEVELOPMENT.md).
 
+#### Verify the versioned engine
+
+Run the fixture suite from `apps/api` with `uv run pytest`. Run the full-stack
+Chromium test from the repository root with
+`apps/api/.venv/bin/python scripts/e2e_design/run.py`. It exercises uploads, the
+design worker, evidence inspection, correction, revision history and reload in an
+isolated database. [Browser test prerequisites](scripts/e2e_design/README.md)
+
+To inspect the real model’s behavior on a synthetic parking brief, run this from
+`apps/api` with the server model configuration in the environment or `.env`:
+
+```sh
+RUN_DESIGN_LIVE=1 DESIGN_LIVE_REPORT=../../test-results/design-live.json \
+  uv run pytest -q -s tests/test_engine_live.py
+```
+
+The JSON records intermediate citations, repair attempts, the published revision
+or failure, and a separate model assessment of grounding, unsupported variability
+and predicted change impact.
+
 ### Guided system design
 
 Open **Design process** in a project to work from gathered use cases toward a

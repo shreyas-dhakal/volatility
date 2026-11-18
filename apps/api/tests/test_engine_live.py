@@ -18,7 +18,7 @@ from test_engine_acceptance import (
     synthetic_project,
 )
 
-from galvanise.config import settings
+from galvanise.config import Settings, settings
 
 # A second, independent fixture with explicit ground truth for the semantic audit.
 SMOKE_TEXT = """Synthetic North Quay parking operations brief
@@ -52,6 +52,11 @@ class SemanticAudit(BaseModel):
 def test_live_parking_grounding_and_change_impact(monkeypatch, tmp_path, request):
     from galvanise.design_engine import pipeline
 
+    # The test database stays isolated. Only this opt-in test imports model
+    # configuration from the same environment files as the running service.
+    server = Settings()
+    for name in ("openai_api_key", "openai_model", "design_model"):
+        monkeypatch.setattr(settings, name, getattr(server, name))
     key = settings.openai_api_key
     if not key:
         pytest.skip("OPENAI_API_KEY is missing")
