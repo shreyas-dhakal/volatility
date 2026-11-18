@@ -45,6 +45,34 @@ GitHub tokens are encrypted at rest; random session tokens and OAuth states are 
 
 ## Ingestion and review
 
+### Versioned design from chat
+
+Upload a project’s requirements or source files in its workspace, then select **Design
+system** or send “Design this system” in chat. Galvanise uses volatility-based
+decomposition, based on the approach in Juval Löwy’s *Righting Software*. It traces
+core outcomes through proposed contracts and tests which components would need to
+change under a hypothetical business change.
+
+Open the design view to inspect source coverage, the evidence behind observed
+decisions, component responsibilities, dependencies and walkthroughs. An excerpt
+opens with its source locator. Questions about the published revision are read-only.
+To change it, send “Correction: …” or select **Apply as correction** on a user
+message. The previous revision remains available while the worker prepares the new
+one. The diff identifies affected records.
+
+Choose **Plan project** on a published revision to generate activities. Supply
+efforts, skills, a start date and staffing to calculate a schedule. Add rates for
+cost and alternative rosters to compare staffing options. The critical path uses
+dependencies alone. The scheduled finish also accounts for individual availability
+and commitments. The planner reports feasible estimates on a five-day workweek.
+
+Set `OPENAI_API_KEY` on the API server. The design stages use `DESIGN_MODEL` when
+configured and otherwise use `OPENAI_MODEL`. Apply the database migrations and
+start the API with its background worker using the local setup above. For local
+password authentication on both the web app and API, start the launcher with
+`AUTH_MODE=legacy ./scripts/run-local.sh`. For Clerk, follow the [Clerk setup
+guide](docs/CLERK_DEVELOPMENT.md).
+
 ### Guided system design
 
 Open **Design process** in a project to work from gathered use cases toward a
