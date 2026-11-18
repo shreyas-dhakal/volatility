@@ -1,4 +1,5 @@
 import io
+import itertools
 import zipfile
 
 from galvanise.design_engine.sources import split_section
@@ -31,5 +32,5 @@ def test_chunks_overlap_without_losing_long_lines_or_source_coordinates():
     assert all(len(part) <= 4800 for part, _, _ in parts)
     assert parts[0][1] == 1 and parts[-1][2] == 4
     assert all(first == last == 2 for _, first, last in parts[1:-1])
-    for (left, *_), (right, *_) in zip(parts, parts[1:]):
+    for (left, *_), (right, *_) in itertools.pairwise(parts):
         assert left[-200:] in right[:1000]
