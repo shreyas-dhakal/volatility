@@ -2,6 +2,8 @@
 import {displayText} from '../lib/text';
 import {useEffect,useRef,useState, type ReactNode} from 'react';
 import * as stylex from '@stylexjs/stylex';
+import {ChatComposer,ChatMessage,ChatMessageBubble} from '@astryxdesign/core/Chat';
+import {Drawer} from '@astryxdesign/core/Drawer';
 import {Theme} from '@astryxdesign/core/theme';
 import {themes,defaultThemeSlug} from '../../../astryx-themes';
 import {VStack,HStack,Button,Text,Heading,TextInput,TextArea,Selector,FileInput,Markdown,Card} from './ui';
@@ -11,33 +13,42 @@ import {DesignWorkspace} from './design-workspace';
 import {Brand} from './brand';
 import {GraphWorkspace} from './graph';
 import {AppIcon,NavigationItem,GitHubAction,ReviewState,evidenceLabel,fieldLabel,plainValue,navigation,toolActivity,type WorkspaceView} from './workspace-ui';
-import {Plus,MessageSquare,Send,Square,RefreshCw,Menu,PanelLeftClose,BookOpen,FileText,Upload,GitBranch,LogOut,Check,X,Pencil,History,Search,ArrowRight,Info,TriangleAlert,Layers,Network,ClipboardCheck,Settings} from 'lucide-react';
+import {Plus,MessageSquare,SquarePen,RefreshCw,Menu,PanelLeftClose,BookOpen,FileText,Upload,GitBranch,LogOut,Check,X,Pencil,History,Search,ArrowRight,Info,TriangleAlert,Layers,Network,ClipboardCheck,Settings} from 'lucide-react';
 const s=stylex.create({
  shell:{height:'100dvh',overflow:'hidden',backgroundColor:'var(--color-background-surface)'},
  frame:{flexGrow:1,minHeight:0,alignItems:'stretch'},
- rail:{position:{default:'relative','@media (max-width: 760px)':'absolute'},inset:{default:'auto','@media (max-width: 760px)':0},zIndex:10,width:{default:'15.5rem','@media (max-width: 760px)':'100%'},flexShrink:0,borderRight:'1px solid var(--color-border)',backgroundColor:'var(--color-background-body)',overflowY:'auto'},
- hiddenMobile:{display:{default:'flex','@media (max-width: 760px)':'none'}},
+ rail:{width:'16rem',flexShrink:0,borderInlineEnd:'var(--border-width) solid var(--color-border)',backgroundColor:'var(--color-background-body)',display:{default:'flex','@media (max-width: 48rem)':'none'}},
+ railBody:{minHeight:0,height:'100%'},
+ railScroll:{flexGrow:1,minHeight:0,overflowY:'auto'},
+ railFooter:{borderTop:'var(--border-width) solid var(--color-border)',flexShrink:0},
+ railTop:{flexShrink:0},
+ history:{maxHeight:'min(16rem, 30dvh)',overflowY:'auto'},
+ sectionHeading:{paddingInline:'var(--spacing-3)'},
  main:{flexGrow:1,minWidth:0,minHeight:0},
- header:{borderBottom:'1px solid var(--color-border)',flexShrink:0},
+ header:{borderBottom:'var(--border-width) solid var(--color-border)',flexShrink:0,minHeight:'4rem'},
  content:{flexGrow:1,minHeight:0,overflowY:'auto'},
  measure:{width:'100%',maxWidth:'48rem',marginInline:'auto'},
- context:{width:'20rem',flexShrink:0,borderLeft:'1px solid var(--color-border)',overflowY:'auto',display:{default:'flex','@media (max-width: 1100px)':'none'}},
+ pageMeasure:{width:'100%',maxWidth:'72rem',marginInline:'auto'},
  center:{minHeight:'100dvh',backgroundColor:'var(--color-background-surface)'},
  auth:{width:'100%',maxWidth:'29rem'},
- composer:{borderTop:'1px solid var(--color-border)',flexShrink:0},
- row:{borderBottom:'1px solid var(--color-border)'},
- empty:{flexGrow:1,justifyContent:'center',minHeight:'22rem'},
- error:{border:'1px solid var(--color-border)',borderRadius:'var(--radius-container)',backgroundColor:'var(--color-background-surface)'},
+ composer:{flexShrink:0},
+ chatLanding:{width:'100%',maxWidth:'48rem',marginInline:'auto',marginBlock:'auto'},
+ chatTitle:{fontSize:'var(--font-size-3xl)',textAlign:'center',textWrap:'balance'},
+ chatIntro:{textAlign:'center'},
+ chatContent:{flexGrow:1,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain'},
+ messageContent:{minWidth:0,overflowWrap:'anywhere'},
+ row:{borderBottom:'var(--border-width) solid var(--color-border)'},
+ empty:{flexGrow:1,minHeight:0,overflowY:'auto'},
+ error:{border:'var(--border-width) solid var(--color-border)',borderRadius:'var(--radius-container)',backgroundColor:'var(--color-background-surface)'},
  tool:{fontSize:'var(--font-size-sm)',color:'var(--color-text-secondary)'},
  grow:{flexGrow:1},
- action:{flexShrink:0},
  helper:{flexGrow:1,minWidth:0,whiteSpace:'normal'},
+ action:{flexShrink:0},
  identity:{flexGrow:1,minWidth:0},
- title:{minWidth:0},
- mobileOnly:{display:{default:'none','@media (max-width: 760px)':'flex'},flexShrink:0},
+ mobileOnly:{display:{default:'none','@media (max-width: 48rem)':'flex'},flexShrink:0},
  navAction:{justifyContent:'flex-start'},
  headerActions:{flexShrink:0},
- connection:{borderTop:'1px solid var(--color-border)'},
+ notesLabel:{display:{default:'inline','@media (max-width: 40rem)':'none'}},
 });
 type View=WorkspaceView;
 const views:View[]=['Chat','Sources','Decisions','Volatility','Questions','Design process','Designs','Graph'];
@@ -47,41 +58,160 @@ export default function Page(props:AuthWiring){return <Theme theme={themes[defau
 function Workspace({clerkMode=false,onSignOut,accountControl}:AuthWiring){
  const [user,setUser]=useState<User|null>(null),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [health,setHealth]=useState<{ai_configured:boolean;github_configured:boolean}|null>(null);
- const [projects,setProjects]=useState<Project[]>([]),[projectId,setProjectId]=useState(''),[conversations,setConversations]=useState<Conversation[]>([]),[conversationId,setConversationId]=useState('');
+ const [projects,setProjects]=useState<Project[]>([]),[projectId,setProjectId]=useState(''),[conversations,setConversations]=useState<Conversation[]>([]),[conversationId,setConversationId]=useState<string|null>(null);
  const [messages,setMessages]=useState<Message[]>([]),[records,setRecords]=useState<Knowledge[]>([]),[sources,setSources]=useState<Source[]>([]),[jobs,setJobs]=useState<Job[]>([]),[documents,setDocuments]=useState<Document[]>([]),[graphs,setGraphs]=useState<GraphSummary[]>([]);
  const [view,setView]=useState<View>('Chat'),[showNav,setShowNav]=useState(false),[newProject,setNewProject]=useState(false),[draft,setDraft]=useState(''),[streaming,setStreaming]=useState(false),[stream,setStream]=useState(''),[tool,setTool]=useState('');
- const controller=useRef<AbortController|null>(null),end=useRef<HTMLDivElement|null>(null); const project=projects.find(p=>p.id===projectId); const base=`/projects/${projectId}`;
+ const controller=useRef<AbortController|null>(null),end=useRef<HTMLDivElement|null>(null),createdConversation=useRef<string|null>(null); const project=projects.find(p=>p.id===projectId); const base=`/projects/${projectId}`;
  async function run(action:()=>Promise<unknown>){setError('');setBusy(true);try{await action()}catch(e){setError(e instanceof Error?e.message:'Something went wrong. Please retry.')}finally{setBusy(false)}}
  async function loadProjects(){const p=await request<Project[]>('/projects');setProjects(p);setProjectId(prev=>p.some(x=>x.id===prev)?prev:p[0]?.id||'')}
- async function refresh(){if(!projectId)return;const [r,so,j,d,g,c]=await Promise.all([request<Knowledge[]>(`${base}/records`),request<Source[]>(`${base}/sources`),request<Job[]>(`${base}/jobs`),request<Document[]>(`${base}/documents`),request<GraphSummary[]>(`${base}/graphs`),request<Conversation[]>(`${base}/conversations`)]);setRecords(r);setSources(so);setJobs(j);setDocuments(d);setGraphs(g);setConversations(c);setConversationId(prev=>c.some(x=>x.id===prev)?prev:c[0]?.id||'')}
+ async function refresh(){if(!projectId)return;const [r,so,j,d,g,c]=await Promise.all([request<Knowledge[]>(`${base}/records`),request<Source[]>(`${base}/sources`),request<Job[]>(`${base}/jobs`),request<Document[]>(`${base}/documents`),request<GraphSummary[]>(`${base}/graphs`),request<Conversation[]>(`${base}/conversations`)]);setRecords(r);setSources(so);setJobs(j);setDocuments(d);setGraphs(g);setConversations(c);setConversationId(prev=>prev===''||c.some(x=>x.id===prev)?prev:c[0]?.id||'')}
  useEffect(()=>{request<typeof health>('/health').then(setHealth).catch(()=>{});request<User>('/auth/me').then(async u=>{setUser(u);await loadProjects()}).catch(e=>{if(!(e instanceof ApiError&&e.status===401))setError(e.message)}).finally(()=>setReady(true));return()=>controller.current?.abort()},[]);
- useEffect(()=>{setMessages([]);setConversationId('');setRecords([]);if(projectId)run(refresh)},[projectId]);
- useEffect(()=>{if(projectId&&conversationId)run(async()=>setMessages(await request<Message[]>(`${base}/conversations/${conversationId}/messages`)))},[conversationId]);
+ useEffect(()=>{setMessages([]);setConversationId(null);setConversations([]);setDraft('');setRecords([]);if(projectId)run(refresh)},[projectId]);
+ useEffect(()=>{
+  if(!projectId||!conversationId)return;
+  if(createdConversation.current===conversationId){createdConversation.current=null;return}
+  let current=true;
+  run(async()=>{
+   const history=await request<Message[]>(`${base}/conversations/${conversationId}/messages`);
+   if(current)setMessages(history);
+  });
+  return()=>{current=false};
+ },[projectId,conversationId]);
  useEffect(()=>{if(!jobs.some(j=>['pending','queued','running','processing'].includes(j.status)))return;const timer=setInterval(()=>refresh().catch(()=>{}),2500);return()=>clearInterval(timer)},[jobs,projectId]);
  useEffect(()=>{end.current?.scrollIntoView({behavior:'smooth'});},[stream,messages]);
- async function send(){if(!draft.trim()||streaming||!project)return;const content=draft.trim();setError('');setStreaming(true);setStream('');setTool('');controller.current=new AbortController();let id=conversationId;try{if(!id){const c=await post<Conversation>(`${base}/conversations`,{title:content.slice(0,65)});id=c.id;setConversations(prev=>[...prev,c]);setConversationId(id)}setMessages(prev=>[...prev,{id:`local-${Date.now()}`,role:'user',content}]);setDraft('');let failed='';await chat(`${base}/conversations/${id}/chat`,content,e=>{if(e.event==='delta')setStream(v=>v+String(e.data.text||''));if(e.event==='tool')setTool(toolActivity(String(e.data.name),String(e.data.status),e.data.result));if(e.event==='error')failed=String(e.data.message)},controller.current.signal);setMessages(await request<Message[]>(`${base}/conversations/${id}/messages`));await refresh();if(failed)throw new Error(failed)}catch(e){if((e as Error).name!=='AbortError')setError((e as Error).message);if(id)setMessages(await request<Message[]>(`${base}/conversations/${id}/messages`).catch(()=>messages))}finally{setStreaming(false);setStream('');setTool('')}}
+ async function send(value:string){
+  const content=value.trim();
+  if(!content||streaming||!project||!health?.ai_configured)return;
+
+  setError('');
+  setStreaming(true);
+  setStream('');
+  setTool('');
+  const abortController=new AbortController();
+  controller.current=abortController;
+  let id=conversationId;
+
+  try{
+   if(!id){
+    const conversation=await post<Conversation>(`${base}/conversations`,{title:content.slice(0,65)});
+    id=conversation.id;
+    createdConversation.current=id;
+    setConversations(previous=>[conversation,...previous]);
+    setConversationId(id);
+   }
+   setMessages(previous=>[...previous,{id:`local-${Date.now()}`,role:'user',content}]);
+   setDraft('');
+
+   let failure='';
+   await chat(`${base}/conversations/${id}/chat`,content,event=>{
+    if(event.event==='delta')setStream(previous=>previous+String(event.data.text||''));
+    if(event.event==='tool')setTool(toolActivity(String(event.data.name),String(event.data.status),event.data.result));
+    if(event.event==='error')failure=String(event.data.message);
+   },abortController.signal);
+   const history=await request<Message[]>(`${base}/conversations/${id}/messages`);
+   await refresh();
+   setMessages(history);
+   if(failure)setError(failure);
+  }catch(error){
+   if((error as Error).name!=='AbortError')setError((error as Error).message);
+   if(id)setMessages(await request<Message[]>(`${base}/conversations/${id}/messages`).catch(()=>messages));
+  }finally{
+   controller.current=null;
+   setStreaming(false);
+   setStream('');
+   setTool('');
+  }
+ }
  async function patch(record:Knowledge,change:Record<string,unknown>){await request(`${base}/records/${record.id}`,{method:'PATCH',body:JSON.stringify({...change,expected_version:record.version})});await refresh()}
- const choose=(v:View)=>{setView(v);setShowNav(false)};
+ const choose=(v:View)=>{setView(v);setNewProject(false);setShowNav(false)};
  if(!ready)return <VStack padding={10}><Text>Opening your workspace…</Text></VStack>;
  if(!user&&clerkMode)return <VStack padding={6} gap={4}><Heading level={1}>Your account needs attention</Heading><Text role="alert">{error||'Your profile could not be opened. Sign in again or request account recovery.'}</Text><Button label="Try again" onClick={()=>location.reload()}/><Button label="Sign out" onClick={()=>void onSignOut?.()}/></VStack>;
  if(!user)return <VStack xstyle={s.center} padding={6} hAlign="center" vAlign="center"><Card><VStack xstyle={s.auth} gap={6}><Brand level={1}/><Text color="secondary">Understand business change. Design software around what matters.</Text><Auth githubAvailable={!!health?.github_configured} onSuccess={async u=>{setUser(u);await loadProjects()}} run={run} busy={busy}/>{error&&<ErrorNotice message={error}/>}</VStack></Card></VStack>;
- return <VStack xstyle={s.shell} gap={0}><HStack xstyle={s.frame} gap={0}>
- <VStack as="nav" aria-label="Workspace navigation" xstyle={[s.rail,!showNav&&s.hiddenMobile]} padding={5} gap={6}>
- <HStack hAlign="between" vAlign="center"><Brand/><Button xstyle={s.mobileOnly} label="Close menu" icon={<AppIcon icon={PanelLeftClose} color="secondary"/>} variant="ghost" size="sm" onClick={()=>setShowNav(false)}/></HStack>
- <VStack gap={2}><Selector label="Project" isDisabled={streaming} value={projectId} onChange={setProjectId} options={projects.map(p=>({value:p.id,label:displayText(p.name)}))} placeholder="Select a project"/><Button label="New project" icon={<AppIcon icon={Plus} color={streaming?'disabled':'blue'}/>} isDisabled={streaming} onClick={()=>{setNewProject(true);setShowNav(false)}}/></VStack>
- <VStack gap={1}>{views.map(v=><NavigationItem key={v} view={v} active={view===v} available={!!project} onClick={()=>choose(v)}/>)}</VStack>
- <VStack gap={2}><HStack hAlign="between" vAlign="center"><Text type="label" color="secondary">Chats</Text><Button label="New chat" icon={<AppIcon icon={Plus} color={projectId?'blue':'disabled'}/>} size="sm" variant="ghost" isDisabled={streaming||!projectId} onClick={()=>{setConversationId('');setMessages([]);choose('Chat')}}/></HStack>{conversations.length?conversations.map(c=><Button key={c.id} label={displayText(c.title||'New chat')} icon={<AppIcon icon={MessageSquare} color={streaming?'disabled':'blue'}/>} xstyle={s.navAction} isDisabled={streaming} variant={conversationId===c.id?'secondary':'ghost'} onClick={()=>{setConversationId(c.id);choose('Chat')}}/>):<Text type="supporting" color="secondary">Your chats will appear here.</Text>}</VStack>
- <VStack gap={2}><Text type="label" color="secondary">Project files</Text>{documents.slice(0,3).map(d=><HStack key={d.id} gap={2} vAlign="center"><AppIcon icon={FileText} color="blue"/><Text type="supporting" maxLines={1}>{d.name}</Text></HStack>)}{sources.map(x=><HStack key={x.id} gap={2} vAlign="center"><AppIcon icon={GitBranch} color={x.status==='ready'?'success':'warning'}/><Text type="supporting" maxLines={1}>{x.name}</Text></HStack>)}{!documents.length&&!sources.length&&<Text type="supporting" color="secondary">No files added yet</Text>}</VStack>
- <VStack xstyle={s.grow}/><VStack gap={3} paddingBlock={3} xstyle={s.connection}><HStack gap={2} vAlign="center"><AppIcon icon={health?.ai_configured?Check:Info} color={health?.ai_configured?'success':'warning'}/><Text type="supporting">{health?.ai_configured?'Chat is set up':'Chat needs setup'}</Text></HStack><HStack gap={3} vAlign="center" hAlign="between"><Text type="label" color="primary" maxLines={1} xstyle={s.identity}>{user.name}</Text>{accountControl}<Button label="Settings" tooltip="Settings" isIconOnly icon={<AppIcon icon={Settings} color="secondary"/>} variant={view==='Settings'?'secondary':'ghost'} aria-current={view==='Settings'?'page':undefined} xstyle={s.action} onClick={()=>choose('Settings')}/></HStack></VStack>
- </VStack>
- <VStack xstyle={s.main} gap={0}>
- <HStack padding={4} xstyle={s.header} vAlign="center" hAlign="between" wrap="wrap"><HStack gap={3} vAlign="center" xstyle={s.identity}><Button xstyle={s.mobileOnly} label="Menu" icon={<AppIcon icon={Menu} color="blue"/>} variant="ghost" onClick={()=>setShowNav(!showNav)}/><VStack gap={0} xstyle={s.title}><Text weight="semibold" maxLines={1}>{project?.name||'Your workspace'}</Text><Text type="supporting" color="secondary">{navigation[view].label} {project?.system_type==='existing'?'· Existing system':''}</Text></VStack></HStack>{project&&<Button label="Project notes" icon={<AppIcon icon={BookOpen} color="blue"/>} variant="ghost" onClick={()=>choose('Context')}/>} {project&&<Button label="Refresh project" tooltip="Refresh project" isIconOnly icon={<AppIcon icon={RefreshCw} color="secondary"/>} variant="ghost" isLoading={busy} onClick={()=>run(refresh)}/>}</HStack>
- {error&&<VStack padding={4}><ErrorNotice message={error}/><Button label="Dismiss" variant="ghost" size="sm" onClick={()=>setError('')}/></VStack>}
+ const isChat=Boolean(project)&&view==='Chat'&&!newProject;
+ const emptyChat=conversationId===''&&!messages.length&&!streaming;
+ const currentConversation=conversations.find(conversation=>conversation.id===conversationId);
+ const sidebar=(mobile=false)=><VStack as="nav" aria-label="Workspace navigation" xstyle={s.railBody} gap={0}>
+  <VStack xstyle={s.railTop} padding={4} gap={5}>
+   <HStack hAlign="between" vAlign="center">
+    <Brand/>
+    {mobile&&<Button label="Close navigation" isIconOnly icon={<AppIcon icon={PanelLeftClose} color="secondary"/>} variant="ghost" onClick={()=>setShowNav(false)}/>}
+   </HStack>
+   <HStack gap={1} vAlign="end">
+    <VStack xstyle={s.identity}>
+     <Selector label="Project" isDisabled={streaming} value={projectId} onChange={setProjectId} options={projects.map(p=>({value:p.id,label:displayText(p.name)}))} placeholder="Select a project"/>
+    </VStack>
+    <Button label="New project" tooltip="New project" isIconOnly icon={<AppIcon icon={Plus} color="secondary"/>} variant="ghost" isDisabled={streaming} onClick={()=>{setNewProject(true);setShowNav(false)}}/>
+   </HStack>
+   <Button label="New chat" icon={<AppIcon icon={SquarePen} color="inherit"/>} xstyle={s.navAction} isDisabled={streaming||!projectId} onClick={()=>{setConversationId('');setMessages([]);setDraft('');choose('Chat')}}/>
+  </VStack>
+  <VStack xstyle={s.railScroll} paddingInline={4} paddingBlockEnd={4} gap={5}>
+   <VStack gap={1}>
+    <Text type="supporting" weight="semibold" color="secondary" xstyle={s.sectionHeading}>Chat history</Text>
+    <VStack gap={1} xstyle={s.history}>{conversations.length?conversations.map(c=><Button key={c.id} label={displayText(c.title||'New chat')} icon={<AppIcon icon={MessageSquare} color="secondary"/>} xstyle={s.navAction} size="sm" isDisabled={streaming} variant={isChat&&conversationId===c.id?'secondary':'ghost'} aria-current={isChat&&conversationId===c.id?'page':undefined} onClick={()=>{if(conversationId!==c.id){setMessages([]);setDraft('');setConversationId(c.id)}choose('Chat')}}/>):<Text type="supporting" color="secondary" xstyle={s.sectionHeading}>No conversations yet</Text>}</VStack>
+   </VStack>
+   {project&&<VStack gap={1}>
+    <Text type="supporting" weight="semibold" color="secondary" xstyle={s.sectionHeading}>Project tools</Text>
+    {views.map(v=><NavigationItem key={v} view={v} active={!newProject&&view===v&&(v!=='Chat'||!currentConversation)} onClick={()=>choose(v)}/>)}
+   </VStack>}
+  </VStack>
+  <HStack xstyle={s.railFooter} padding={4} gap={2} vAlign="center">
+   {accountControl}
+   <Text type="label" maxLines={1} xstyle={s.identity}>{user.name}</Text>
+   <Button label="Settings" tooltip="Settings" isIconOnly icon={<AppIcon icon={Settings} color="secondary"/>} variant={view==='Settings'?'secondary':'ghost'} aria-current={view==='Settings'?'page':undefined} xstyle={s.action} onClick={()=>choose('Settings')}/>
+  </HStack>
+ </VStack>;
+ return <VStack xstyle={s.shell} gap={0}>
  <HStack xstyle={s.frame} gap={0}>
- <VStack xstyle={s.main} gap={0}>
- {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects();setProjectId(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={8} xstyle={s.empty} gap={4} hAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">Tell us what you want to improve. You can add files and code later.</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects();setProjectId(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:view==='Chat'?<>
- <VStack padding={6} gap={6} xstyle={s.content}><VStack xstyle={s.measure} gap={6}>{messages.length===0&&!streaming?<VStack gap={4} xstyle={s.empty}><Heading level={1}>What is changing in your business?</Heading><Text color="secondary">Tell me what you want to improve, what is changing, or what is getting in the way.</Text><HStack gap={3} wrap="wrap"><Button label="Add files" icon={<AppIcon icon={Upload} color="blue"/>} onClick={()=>choose('Sources')}/><Button label="Answer questions" icon={<AppIcon icon={Info} color="orange"/>} variant="ghost" onClick={()=>choose('Questions')}/></HStack>{!health?.ai_configured&&<Text type="supporting" color="secondary">Chat needs to be set up in Settings. You can still add files and explore your code map.</Text>}</VStack>:messages.map(m=><VStack key={m.id} gap={2}><Text type="label" weight="semibold">{m.role==='user'?'You':'Galvanise'}</Text><Markdown>{m.content}</Markdown>{m.metadata_json?.partial===true&&<Text type="supporting">Response stopped before it finished</Text>}</VStack>)}{streaming&&<VStack gap={2} aria-live="polite"><Text weight="semibold">Galvanise</Text>{stream?<Markdown>{stream}</Markdown>:<Text color="secondary">Reading your project…</Text>}{tool&&<Text xstyle={s.tool}>{tool}</Text>}</VStack>}<VStack ref={end}/></VStack></VStack>
- <VStack padding={5} xstyle={s.composer}><VStack xstyle={s.measure} gap={3}><TextArea label="Message your architect" isLabelHidden value={draft} onChange={setDraft} placeholder="Describe a business change, ask a question, or explore a design…" rows={3}/><HStack gap={3} hAlign="between" vAlign="center"><Text xstyle={s.helper} type="supporting" color="secondary">You choose which suggestions to keep.</Text>{streaming?<Button xstyle={s.action} label="Stop" icon={<AppIcon icon={Square} color="error"/>} onClick={()=>controller.current?.abort()}/>:<Button xstyle={s.action} label="Send" icon={<AppIcon icon={Send} color="inherit"/>} variant="primary" isDisabled={!draft.trim()||!health?.ai_configured} tooltip={!health?.ai_configured?'Set up chat in Settings first':undefined} onClick={send}/>}</HStack></VStack></VStack></>:<VStack padding={6} gap={6} xstyle={s.content}>
+ <VStack xstyle={s.rail}>{sidebar()}</VStack>
+ <Drawer label="Workspace navigation" side="start" width="19rem" padding={0} isOpen={showNav} onOpenChange={setShowNav}>{showNav&&sidebar(true)}</Drawer>
+ <VStack as="main" xstyle={s.main} gap={0}>
+ <HStack as="header" paddingInline={5} paddingBlock={2} gap={2} xstyle={s.header} vAlign="center">
+  <Button xstyle={s.mobileOnly} label="Open navigation" isIconOnly icon={<AppIcon icon={Menu} color="secondary"/>} variant="ghost" onClick={()=>setShowNav(true)}/>
+  <VStack gap={0} xstyle={s.identity}>
+   <Text weight="semibold" maxLines={1}>{newProject?'New project':isChat?currentConversation?.title||'Chat':navigation[view].label}</Text>
+   <Text type="supporting" color="secondary" maxLines={1}>{project?.name||'Galvanise workspace'}</Text>
+  </VStack>
+  {project&&<HStack gap={1} vAlign="center" xstyle={s.headerActions}>
+   {view!=='Context'&&<Button label="Project notes" aria-label="Project notes" tooltip="Project notes" icon={<AppIcon icon={BookOpen} color="secondary"/>} variant="ghost" onClick={()=>choose('Context')}><Text type="label" xstyle={s.notesLabel}>Project notes</Text></Button>}
+   <Button label="Refresh project" tooltip="Refresh project" isIconOnly icon={<AppIcon icon={RefreshCw} color="secondary"/>} variant="ghost" isLoading={busy} onClick={()=>run(refresh)}/>
+  </HStack>}
+ </HStack>
+ {error&&<VStack padding={4} hAlign="start"><ErrorNotice message={error}/><Button label="Dismiss" variant="ghost" size="sm" onClick={()=>setError('')}/></VStack>}
+ {newProject?<VStack padding={6} xstyle={s.content}><ProjectForm busy={busy} cancel={()=>setNewProject(false)} save={data=>run(async()=>{const p=await post<Project>('/projects',data);await loadProjects();setProjectId(p.id);setNewProject(false);setView('Chat')})}/></VStack>:!project&&view!=='Settings'?<VStack padding={6} xstyle={s.empty} gap={4} hAlign="center" vAlign="center"><Heading level={1}>Start with a project</Heading><Text color="secondary">Tell us what you want to improve. You can add files and code later.</Text><HStack gap={3} wrap="wrap"><Button label="Create your first project" icon={<AppIcon icon={Plus} color="inherit"/>} variant="primary" onClick={()=>setNewProject(true)}/><Button label="Explore sample project" icon={<AppIcon icon={BookOpen} color="blue"/>} isLoading={busy} onClick={()=>run(async()=>{const p=await post<Project>('/projects/demo');await loadProjects();setProjectId(p.id)})}/></HStack><Text type="supporting" color="secondary">The sample contains fictional information so you can try things out.</Text></VStack>:isChat?<VStack xstyle={s.chatContent} gap={0} paddingInline={5}>
+ {!emptyChat&&<VStack xstyle={s.chatContent} paddingBlock={6}>
+   <VStack xstyle={s.measure} gap={6}>
+    {messages.map(message=>{
+     const fromUser=message.role==='user';
+     return <ChatMessage key={message.id} sender={fromUser?'user':'assistant'}>
+      <ChatMessageBubble variant={fromUser?'filled':'ghost'} name={fromUser?undefined:<Text weight="semibold">Galvanise</Text>} width={fromUser?undefined:'100%'}>
+       <VStack gap={2} xstyle={s.messageContent}>
+        <Markdown>{message.content}</Markdown>
+        {message.metadata_json?.partial===true&&<Text type="supporting" color="secondary">Response stopped before it finished</Text>}
+       </VStack>
+      </ChatMessageBubble>
+     </ChatMessage>;
+    })}
+    {streaming&&<ChatMessage sender="assistant"><ChatMessageBubble name={<Text weight="semibold">Galvanise</Text>} variant="ghost" width="100%">
+     <VStack gap={2} xstyle={s.messageContent}>
+      {stream?<Markdown>{stream}</Markdown>:<Text role="status" color="secondary">Reading your project…</Text>}
+      {tool&&<Text role="status" xstyle={s.tool}>{tool}</Text>}
+     </VStack>
+    </ChatMessageBubble></ChatMessage>}
+    <VStack ref={end}/>
+   </VStack>
+  </VStack>}
+  <VStack xstyle={emptyChat?s.chatLanding:[s.measure,s.composer]} paddingBlockEnd={4} gap={emptyChat?5:2}>
+   {emptyChat&&<VStack gap={2} hAlign="center">
+    <Heading level={1} xstyle={s.chatTitle}>What is changing in your business?</Heading>
+    <Text color="secondary" xstyle={s.chatIntro}>Describe a business change or ask about your system.</Text>
+   </VStack>}
+   <ChatComposer value={draft} onChange={setDraft} onSubmit={send} placeholder="Message Galvanise" elevation="none" isDisabled={!health?.ai_configured} isStopShown={streaming} onStop={()=>controller.current?.abort()} footerActions={<Button label="Add files" icon={<AppIcon icon={Upload} color="secondary"/>} size="sm" variant="ghost" onClick={()=>choose('Sources')}/>}/>
+   {emptyChat&&<HStack gap={2} hAlign="center" wrap="wrap">
+    <Button label="Open questions" icon={<AppIcon icon={Info} color="secondary"/>} size="sm" variant="ghost" onClick={()=>choose('Questions')}/>
+   </HStack>}
+   {health&&!health.ai_configured&&<HStack gap={2} hAlign="center" vAlign="center" wrap="wrap"><Text type="supporting" color="secondary">Chat needs to be set up.</Text><Button label="Open settings" size="sm" variant="ghost" onClick={()=>choose('Settings')}/></HStack>}
+  </VStack>
+ </VStack>:<VStack padding={6} xstyle={s.content}><VStack gap={6} xstyle={s.pageMeasure}>
  {view==='Sources'&&<Sources legacy={!clerkMode} githubAvailable={!!health?.github_configured} base={base} user={user} sources={sources} documents={documents} jobs={jobs} graphs={graphs} busy={busy} run={run} refresh={refresh}/>}
  {['Decisions','Volatility','Questions'].includes(view)&&<><HStack hAlign="between" vAlign="center" wrap="wrap"><Heading level={1}>{view==='Decisions'?'Decisions':view==='Volatility'?'What might change':'Questions to answer'}</Heading><Button label="Find suggestions" icon={<AppIcon icon={Search} color={health?.ai_configured?'blue':'disabled'}/>} isDisabled={!health?.ai_configured} tooltip={!health?.ai_configured?'Set up chat in Settings first':undefined} isLoading={busy} onClick={()=>run(async()=>{await post(`${base}/analyse`);await refresh()})}/></HStack><Text color="secondary">Check each suggestion before keeping it. You can edit it or leave it out.</Text><KnowledgeList records={records.filter(r=>view==='Decisions'?['requirement','decision','driver','traceability','evidence'].includes(r.kind):view==='Volatility'?r.kind==='volatility':r.kind==='question')} busy={busy} patch={(r,c)=>run(()=>patch(r,c))} answer={(r,answer)=>run(async()=>{await post(`${base}/questions/${r.id}/answer`,{answer});await refresh()})} map={r=>run(async()=>{if(!graphs[0])throw new Error('Import a technical graph before linking a decision.');await post(`${base}/traceability`,{decision_id:r.id,graph_id:graphs[0].id});await refresh()})}/></>}
  {view==='Design process'&&<DesignWorkspace key={base} base={base} aiAvailable={health?health.ai_configured:null} records={records} onChange={refresh} onSettings={()=>choose('Settings')}/>}
@@ -89,10 +219,8 @@ function Workspace({clerkMode=false,onSignOut,accountControl}:AuthWiring){
  {view==='Graph'&&<GraphWorkspace base={base} graphs={graphs} records={records} onError={setError}/>}
  {view==='Context'&&project&&<VStack gap={5}><Heading level={1}>Project notes</Heading><Heading level={2}>Project goal</Heading><Text>{project.objective||'Tell us your project goal in chat.'}</Text><Context title="Decisions to review" records={records.filter(r=>r.status==='pending'&&['decision','requirement'].includes(r.kind))} open={()=>choose('Decisions')}/><Context title="Reasons for change" records={records.filter(r=>r.kind==='driver')} open={()=>choose('Volatility')}/><Context title="Questions to answer" records={records.filter(r=>r.kind==='question')} open={()=>choose('Questions')}/><Button label="Back to chat" icon={<AppIcon icon={MessageSquare} color="blue"/>} onClick={()=>choose('Chat')}/></VStack>}
  {view==='Settings'&&<VStack gap={5}><Heading level={1}>Workspace settings</Heading><Heading level={2}>Account</Heading><Text>{user.name} · {user.email}</Text><GitHubAction available={!!health?.github_configured} connected={user.github_connected} legacy={!clerkMode}/><Heading level={2}>Connections</Heading><HStack gap={2} vAlign="center"><AppIcon icon={health?.ai_configured?Check:Info} color={health?.ai_configured?'success':'warning'}/><Text>{health?.ai_configured?'AI chat is set up':'AI chat needs setup'}</Text></HStack>{!health?.ai_configured&&<Text color="secondary">The person running Galvanise needs to add an OpenAI API key before chat can respond.</Text>}<Text color="secondary">GitHub can read public repositories. It cannot change your code.</Text><Button label="Sign out" icon={<AppIcon icon={LogOut} color="secondary"/>} isDisabled={streaming} onClick={()=>run(async()=>{if(onSignOut)await onSignOut();else await post('/auth/logout');setUser(null);setProjects([]);setProjectId('')})}/></VStack>}
- </VStack>}
- </VStack>
- {project&&view==='Chat'&&!newProject&&<VStack as="aside" aria-label="Project context" padding={5} gap={6} xstyle={s.context}><Heading level={2}>Project notes</Heading><VStack gap={2}><Text type="label" weight="semibold">Project goal</Text><Text color="secondary">{project.objective||'Tell us your project goal in chat.'}</Text></VStack><Context title="Decisions to review" records={records.filter(r=>r.status==='pending'&&['decision','requirement'].includes(r.kind)).slice(0,4)} open={()=>choose('Decisions')}/><Context title="Reasons for change" records={records.filter(r=>r.kind==='driver').slice(0,3)} open={()=>choose('Volatility')}/><Context title="Questions to answer" records={records.filter(r=>r.kind==='question').slice(0,3)} open={()=>choose('Questions')}/><Button label="Open code map" icon={<AppIcon icon={Network} color="teal"/>} onClick={()=>choose('Graph')}/></VStack>}
- </HStack></VStack></HStack></VStack>
+ </VStack></VStack>}
+ </VStack></HStack></VStack>
 }
 export function ErrorNotice({message}:{message:string}){return <VStack role="alert" padding={4} xstyle={s.error}><HStack gap={2} vAlign="center"><AppIcon icon={TriangleAlert} color="error"/><Text weight="semibold">Something needs attention</Text></HStack><Text>{message}</Text></VStack>}
 export function Auth({onSuccess,run,busy,githubAvailable=false}:{githubAvailable?:boolean;onSuccess:(u:User)=>Promise<void>;run:(fn:()=>Promise<unknown>)=>Promise<void>;busy:boolean}){const [register,setRegister]=useState(false),[name,setName]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState('');return <VStack as="form" gap={4} onSubmit={(e:React.FormEvent)=>{e.preventDefault();run(async()=>{const u=await post<User>(`/auth/${register?'register':'login'}`,{name,email,password});await onSuccess(u)})}}><Heading level={2}>{register?'Create your account':'Sign in to your workspace'}</Heading>{register&&<TextInput label="Name" value={name} onChange={setName} isRequired autoComplete="name"/>}<TextInput label="Email" type="email" value={email} onChange={setEmail} isRequired autoComplete="email"/><TextInput label="Password" type="password" value={password} onChange={setPassword} isRequired autoComplete={register?'new-password':'current-password'}/>{register&&<Text type="supporting" color="secondary">Use at least 10 characters.</Text>}<Button icon={<AppIcon icon={ArrowRight} color="inherit"/>} label={register?'Create account':'Sign in'} type="submit" variant="primary" isLoading={busy}/><GitHubAction available={githubAvailable} legacy/><Button label={register?'Already have an account? Sign in':'New here? Create an account'} variant="ghost" onClick={()=>setRegister(!register)}/></VStack>}

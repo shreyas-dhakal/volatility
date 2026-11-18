@@ -32,32 +32,32 @@ colors:
   color-text-error: "light-dark(#c0262c, #ffaea7)"
 typography:
   headline:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: 1.3333
   title:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.4
   section:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "1.0625rem"
     fontWeight: 700
     lineHeight: 1.4118
   body:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.4286
   label:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 500
     lineHeight: 1.4286
   supporting:
-    fontFamily: "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: 1.6667
@@ -125,7 +125,7 @@ components:
 
 **Creative North Star: "The Architecture Working Notebook"**
 
-Galvanise uses the incumbent Astryx neutral identity: restrained grayscale surfaces, Figtree typography and compact controls around a spacious working column. The interface feels like a working notebook for architecture decisions, with conversation, evidence and review taking priority over decoration.
+Galvanise uses the incumbent Astryx neutral identity: restrained grayscale surfaces, system UI typography and compact controls around a spacious working column. The interface feels like a working notebook for architecture decisions, with conversation, evidence and review taking priority over decoration.
 
 The creative north star names the implemented character; it does not introduce a replacement brand. Color is used for navigation/action icons, review states and graph meaning. Labels, provenance, review states and edge styles keep claims distinguishable without implying measured certainty.
 
@@ -160,7 +160,7 @@ Body is the pale navigation-rail background and ordinary graph-node fill. Surfac
 
 ## Typography
 
-**Heading and body font:** Figtree with the system fallback stack in frontmatter. The application self-hosts Figtree weights 400, 500, 600 and 700 through `@fontsource/figtree` imports in the root layout. Webpack suppresses the generated theme module's remote `fonts.css` import; keep that generated module unchanged. The fallback stack remains available while font assets load. **Code font:** the monospace stack in frontmatter, used by Markdown code and raw evidence.
+**Heading and body font:** the system UI stack in frontmatter, set by the Astryx theme. **Code font:** the monospace stack in frontmatter, used by Markdown code and raw evidence.
 
 Hierarchy is the installed neutral theme's compact operational scale, not a display/marketing scale. Headline maps to Heading level 1; title to level 2; section to level 3. Body serves conversation and descriptions; label serves controls and metadata headings; supporting serves status, helpers and provenance. Explicit semibold overrides mark speakers, objectives and data keys. No application display role is used. Frontmatter sizes are the nominal default values; Astryx's dynamic type scaling can change rendered size.
 
