@@ -1,3 +1,6 @@
+import type {DateInputProps} from '@astryxdesign/core/DateInput';
+type CalendarDate = NonNullable<DateInputProps['value']>;
+
 export type Evidence = {chunk_id:string; excerpt:string};
 export type Entity = {id:string; evidence?:Evidence[]; [field:string]:unknown};
 export type Component = Entity & {name:string; role:string; owns:string[]};
@@ -20,13 +23,13 @@ export type Activity = {
   id:string;deliverable:string;related_ids:string[];predecessors:string[];skills:string[]|null;
   effort:Partial<Record<EffortCase,number|null>>;estimate_source?:string|null;estimate_confirmed?:boolean;sources?:Evidence[];
 };
-export type Commitment = {start:string;end:string;fraction:number|null};
+export type Commitment = {start:CalendarDate|'';end:CalendarDate|'';fraction:number|null};
 export type Person = {
   id:string;name:string;skills:string[];availability:number|null;daily_rate:number|null;
-  available_from?:string|null;available_until?:string|null;commitments:Commitment[];
+  available_from?:CalendarDate|null;available_until?:CalendarDate|null;commitments:Commitment[];
 };
 export type Roster = {id:string;name:string;people:Person[]};
-export type Inputs = {start_date?:string;activities?:Activity[];rosters?:Roster[];scenarios?:EffortCase[];assumptions?:string[]};
+export type Inputs = {start_date?:CalendarDate;activities?:Activity[];rosters?:Roster[];scenarios?:EffortCase[];assumptions?:string[]};
 type Warning = {message:string; code:string};
 type Schedule = {
   roster_id:string;scenario:string;status:string;critical_path:string[];critical_path_days:number|null;
@@ -35,7 +38,7 @@ type Schedule = {
   blockers:{activity_id:string;skills:string[];reason:string}[];
 };
 export type Plan = {id:string;revision_id:string;input:Inputs;result:{
-  activities:Activity[];missing_inputs:{path:string;message:string}[];warnings:Warning[];runs:Schedule[];
+  activities:Activity[];assumptions?:string[];missing_inputs:{path:string;message:string}[];warnings:Warning[];runs:Schedule[];
 }};
 export type EngineState = {revision:Revision|null;run:Run|null;plan:Plan|null};
 export const activeRun = (run:Run|null) => !!run && ['queued','running','pending','processing'].includes(run.status);
