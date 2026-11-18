@@ -1,14 +1,15 @@
 """Claim durable runs with a renewable lease and fence every write by claim token."""
 
 import asyncio
+import re
 from contextlib import suppress
 from datetime import timedelta
 
 from fastapi import HTTPException
 from httpx import HTTPError, HTTPStatusError
 from openai import APIError, APIStatusError
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from galvanise.database import SessionLocal
 from galvanise.design_engine.service import head_id, in_project
@@ -131,7 +132,11 @@ def prepare(run_id, token):
         arguments = {
             "chunks": chunks,
             "manifest": manifest,
-            "base": parent.snapshot_json if parent else None,
+            # A new selection may explicitly exclude an earlier source. Its
+            # prior observations and quotations must not enter model context.
+            "base": parent.snapshot_json
+            if parent and set(parent.source_ids).issubset(run.source_ids)
+            else None,
             "correction": correction,
             "start_stage": run.start_stage,
             "checkpoint": run.checkpoint_json,
@@ -156,6 +161,14 @@ def save(run_id, token, stage, checkpoint):
 
 def revision_diff(before, after, reason):
     result = {"added": [], "changed": [], "removed": []}
+    explanations = {}
+    for finding in after.get("findings", []):
+        if finding.get("code") == "revision":
+            for target in finding.get("target_ids", []):
+                explanations[target] = finding["message"]
+            retired = re.match(r"Retired ([^.]+)\. (.+)", finding.get("message", ""))
+            if retired:
+                explanations[retired[1]] = retired[2]
     for collection in sorted(set(after) | set(before)):
         if collection == "manifest":
             continue
@@ -183,7 +196,11 @@ def revision_diff(before, after, reason):
             else:
                 continue
             result[kind].append(
-                {"collection": collection, "id": key, "reason": f"{detail}. {reason}"}
+                {
+                    "collection": collection,
+                    "id": key,
+                    "reason": f"{detail}. {explanations.get(key, reason)}",
+                }
             )
     return result
 
@@ -195,11 +212,18 @@ def publish(run_id, token, snapshot, arguments):
         reason = "Generated from the selected project evidence."
         if arguments["correction"]:
             reason = f"User correction: {arguments['correction']['text'][:300]}"
+        previous = (
+            in_project(
+                db, DesignRevision, run.project_id, run.base_revision_id
+            ).snapshot_json
+            if run.base_revision_id
+            else {}
+        )
         revision = DesignRevision(
             project_id=run.project_id,
             parent_revision_id=run.base_revision_id,
             snapshot_json=snapshot,
-            diff_json=revision_diff(arguments["base"] or {}, snapshot, reason),
+            diff_json=revision_diff(previous, snapshot, reason),
             source_ids=run.source_ids,
         )
         db.add(revision)
