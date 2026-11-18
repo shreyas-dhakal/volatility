@@ -55,7 +55,11 @@ async def run_call(stage, snapshot, context, all_chunks, correction, hints):
         try:
             raw = await call_model(stage, request)
             changes = schema.model_validate(raw).model_dump()
-            check_evidence(changes, context["chunks"])
+            errors = []
+            try:
+                check_evidence(changes, context["chunks"])
+            except ValueError as exc:
+                errors.append(str(exc))
             candidate = upsert(snapshot, changes, hints)
             if stage == "review":
                 review_reasons(snapshot, candidate)
@@ -65,7 +69,12 @@ async def run_call(stage, snapshot, context, all_chunks, correction, hints):
                 ]
                 candidate["findings"].extend(review_checks(candidate))
                 check_final(candidate, all_chunks, correction)
-            check_links(candidate, stage)
+            try:
+                check_links(candidate, stage)
+            except ValueError as exc:
+                errors.append(str(exc))
+            if errors:
+                raise ValueError("\n".join(errors))
             return candidate
         except ValueError as exc:
             diagnostics.append(str(exc))

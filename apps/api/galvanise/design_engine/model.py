@@ -43,16 +43,23 @@ async def call_model(stage, context):
         for identity, handle in aliases.items():
             diagnostics = diagnostics.replace(identity, handle)
         inputs["repair"]["diagnostics"] = diagnostics
+    instructions = RULES + "\n" + instruction
+    if stage in {"boundaries", "walkthroughs", "review"}:
+        decisions = inputs.get("prior", {}).get("volatilities", [])
+        instructions += (
+            "\nThe complete set of allowed volatility IDs for owns and volatility_id is "
+            + json.dumps([v["id"] for v in decisions])
+        )
     async with configured_client(model=selected_model) as client:
         response = await client.responses.parse(
             model=selected_model,
-            instructions=RULES
-            + "\n"
-            + instruction
+            instructions=instructions
             + (
                 "\nCopy reference handles exactly. New IDs start with new_. "
                 "Copy short, contiguous supporting phrases directly from the source text. "
-                "Use separate citations for nonadjacent phrases."
+                "Use separate citations for nonadjacent phrases. A proposed collaboration, "
+                "contract or change prediction may have empty evidence. Use links to "
+                "grounded decisions and use cases to explain its rationale."
             ),
             input=json.dumps(inputs, ensure_ascii=False),
             timeout=300,

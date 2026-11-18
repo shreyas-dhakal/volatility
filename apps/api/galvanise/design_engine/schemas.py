@@ -15,7 +15,9 @@ class Model(BaseModel):
 
 class Citation(Model):
     chunk_id: Text
-    excerpt: Text
+    excerpt: Text = Field(
+        description="Contiguous verbatim text copied from the supplied chunk, including original punctuation."
+    )
 
 
 class Entity(Model):
@@ -40,7 +42,7 @@ class Observation(Entity):
 
 class UseCase(Entity):
     name: Text
-    actor_id: Text
+    actor_id: Text = Field(description="ID from the supplied actors collection.")
     trigger: Text
     outcome: Text
     steps: Texts
@@ -67,7 +69,9 @@ class Component(Entity):
         "manager", "engine", "resource_access", "resource", "client", "utility"
     ]
     responsibility: Text
-    owns: list[Text]
+    owns: list[Text] = Field(
+        description="IDs from volatilities only, each assigned to exactly one primary component. Return [] when this component consumes a decision or owns no variability."
+    )
     rationale: Text
     rationale_ids: list[Text] = Field(default_factory=list)
     use_case_ids: list[Text]
@@ -104,7 +108,9 @@ class Step(Model):
     coverage_gap: Text | None
     description: Text
     outcome: Text
-    path: Text  # "main" or the exact use-case exception.
+    path: Text = Field(
+        description="Use main for the normal flow, or copy one exception string verbatim from the referenced use case."
+    )
 
 
 class Walkthrough(Entity):

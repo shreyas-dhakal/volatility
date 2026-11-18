@@ -343,7 +343,10 @@ def test_e_invalid_response_gets_one_repair_and_preserves_head(
     run_design_worker()
     view = project.overview()
     assert len(attempts) == 2 and "repair" not in attempts[0]
-    assert attempts[1]["repair"]["diagnostics"]
+    diagnostics = attempts[1]["repair"]["diagnostics"]
+    assert diagnostics
+    if fault == "partial_repair":
+        assert "inexact excerpt" in diagnostics and "operation" in diagnostics
     assert attempts[1]["repair"]["previous_response"]["walkthroughs"]
     assert view["run"]["status"] == "failed" and view["run"]["error"]
     assert view["revision"] == base
