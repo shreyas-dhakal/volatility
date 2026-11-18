@@ -126,17 +126,17 @@ def store(
     fingerprint = digest(
         json.dumps([locator, sections, status, detail], sort_keys=True)
     )
-    values = dict(
-        id=uid(),
-        project_id=project_id,
-        origin=origin,
-        content_hash=fingerprint,
-        locator_json=locator,
-        extraction_status=status,
-        detail=detail,
-        document_id=document_id,
-        message_id=message_id,
-    )
+    values = {
+        "id": uid(),
+        "project_id": project_id,
+        "origin": origin,
+        "content_hash": fingerprint,
+        "locator_json": locator,
+        "extraction_status": status,
+        "detail": detail,
+        "document_id": document_id,
+        "message_id": message_id,
+    }
     keys = ["project_id", "origin", "content_hash"]
     result = insert_once(db, DesignSource, values, keys)
     if result.rowcount == 0:
@@ -348,3 +348,36 @@ def evidence(db, project_id, source_ids):
             }
         )
     return chunks, manifest
+
+
+def initial_sources(db, project_id, request):
+    from galvanise.models import Project
+
+    source_ids = collect(db, project_id, request["selected_upload_ids"])
+    project = db.get(Project, project_id)
+    for field in ("description", "objective"):
+        value = getattr(project, field)
+        if value and value.strip():
+            source_ids.append(
+                store(
+                    db,
+                    project_id,
+                    "project/" + field,
+                    {"kind": "project", "section": field},
+                    [({}, redact(value))],
+                )
+            )
+    if request["request_message_id"]:
+        message = user_message(db, project_id, request["request_message_id"])
+        earlier = db.scalars(
+            scoped(db, Message, project_id)
+            .where(
+                Message.conversation_id == message.conversation_id,
+                Message.role == "user",
+                Message.created_at <= message.created_at,
+            )
+            .order_by(Message.created_at, Message.id)
+        )
+        for msg in earlier:
+            source_ids.append(store_message(db, project_id, msg.id))
+    return list(dict.fromkeys(source_ids))

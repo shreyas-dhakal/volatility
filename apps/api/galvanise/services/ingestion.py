@@ -442,7 +442,13 @@ def process_next_job():
 
 
 def run_worker(stop):
+    import threading
+    from galvanise.design_engine.worker import consume
+
     recover_jobs()
+    # Both consumers use the existing worker lifecycle. Lengthy model calls must
+    # leave the document queue available for uploads and repository indexing.
+    threading.Thread(target=consume, args=(stop,), daemon=True).start()
     while not stop.is_set():
         try:
             if not process_next_job():
