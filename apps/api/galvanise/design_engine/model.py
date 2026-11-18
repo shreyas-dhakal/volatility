@@ -8,9 +8,10 @@ from .prompts import RULES, STAGES
 
 async def call_model(stage, context):
     schema, instruction = STAGES[stage]
-    async with configured_client() as client:
+    selected_model = settings.design_model or settings.openai_model
+    async with configured_client(model=selected_model) as client:
         response = await client.responses.parse(
-            model=settings.design_model or settings.openai_model,
+            model=selected_model,
             instructions=RULES + "\n" + instruction,
             input=json.dumps(context, ensure_ascii=False),
             text_format=schema,

@@ -86,6 +86,22 @@ def check_links(snapshot, stage):
 
     owners = defaultdict(list)
     for component in snapshot["components"]:
+        if not (
+            component["owns"] or component["use_case_ids"] or component["rationale_ids"]
+        ):
+            raise ValueError(
+                f"Component {component['id']} needs a rationale linked to a decision, use case or resource."
+            )
+        for target in component["rationale_ids"]:
+            if ids.get(target) not in {
+                "volatilities",
+                "use_cases",
+                "actors",
+                "implementation_findings",
+            }:
+                raise ValueError(
+                    f"Component {component['id']} has an unresolved rationale link {target}."
+                )
         for decision in component["owns"]:
             ref(decision, "volatilities", component["id"])
             owners[decision].append(component["id"])
@@ -184,6 +200,27 @@ def check_links(snapshot, stage):
             leak["component_id"] for leak in probe["leaks"]
         ]:
             ref(component, "components", probe["id"])
+
+
+def review_reasons(before, after):
+    previous = {row["id"]: row for _, row in all_rows(before)}
+    changed = {
+        row["id"]
+        for kind, row in all_rows(after)
+        if kind
+        in {"components", "contracts", "dependencies", "walkthroughs", "change_probes"}
+        and row != previous.get(row["id"])
+    }
+    explained = {
+        target
+        for f in after["findings"]
+        if f["code"] == "revision" and f != previous.get(f["id"])
+        for target in f["target_ids"]
+    }
+    if changed - explained:
+        raise ValueError(
+            f"Explain each material review change in a revision finding targeting its ID: {sorted(changed - explained)}."
+        )
 
 
 def review_checks(snapshot):

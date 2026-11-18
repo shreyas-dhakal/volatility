@@ -1,8 +1,9 @@
 """Structured model responses and the persisted design revision."""
 
+import re
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 Texts = Annotated[list[Text], Field(min_length=1)]
@@ -68,7 +69,8 @@ class Component(Entity):
     responsibility: Text
     owns: list[Text]
     rationale: Text
-    use_case_ids: Texts
+    rationale_ids: list[Text] = Field(default_factory=list)
+    use_case_ids: list[Text]
     provisional: bool
 
 
@@ -123,6 +125,25 @@ class ChangeProbe(Entity):
     predicted_edit_ids: list[Text]
     leaks: list[Leak]
 
+    @model_validator(mode="after")
+    def predictions_only(self):
+        # Numerical policy changes (e.g. "cap the fee at $20") are valid.
+        # Reject performance claims stated as measured results in predictive fields.
+        statistics = re.compile(
+            r"\b(?:measured|achieved|recorded|demonstrated|benchmarks? (?:show|showed))"
+            r"[^.!?]{0,70}(?:\d+(?:\.\d+)?\s*%|\b(?:improvement|speedup|savings)\b)"
+            r"|\b(?:improved|reduced|saved|decreased)\b[^.!?]{0,50}\bby\s+\d+(?:\.\d+)?\s*%",
+            re.IGNORECASE,
+        )
+        if any(
+            statistics.search(text)
+            for text in [self.change, *(leak.reason for leak in self.leaks)]
+        ):
+            raise ValueError(
+                "Change probes contain predictions only. Put observed measurements in cited implementation findings."
+            )
+        return self
+
 
 class Question(Entity):
     question: Text
@@ -170,10 +191,31 @@ class Retirement(Model):
     reason: Text
 
 
+class Edit(Model):
+    retire: list[Retirement] = Field(default_factory=list)
+
+
+class UseCaseEdit(UseCases, Edit):
+    pass
+
+
+class DecisionEdit(Decisions, Edit):
+    pass
+
+
+class BoundaryEdit(Boundaries, Edit):
+    pass
+
+
+class TraceEdit(Traces, Edit):
+    pass
+
+
 class Review(Boundaries, Traces):
     questions: Annotated[list[Question], Field(max_length=3)]
     retire: list[Retirement]
 
 
 class Snapshot(Inventory, UseCases, Decisions, Boundaries, Traces):
+    analysis_type: Literal["design_analysis"] = "design_analysis"
     manifest: list[dict[str, Any]]

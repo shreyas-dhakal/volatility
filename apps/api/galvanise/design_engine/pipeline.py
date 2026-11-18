@@ -7,9 +7,15 @@ from copy import deepcopy
 from .context import Chunk, Correction, context_for, inventory_batches, relevant_chunks
 from .model import call_model
 from .prompts import STAGES
-from .records import COLLECTIONS, upsert
+from .records import COLLECTIONS, reuse_candidates, upsert, with_candidates
 from .schemas import Snapshot
-from .validation import check_evidence, check_links, review_checks, user_message
+from .validation import (
+    check_evidence,
+    check_links,
+    review_checks,
+    review_reasons,
+    user_message,
+)
 
 
 def signature(chunks, manifest, base, correction, start_stage):
@@ -40,7 +46,7 @@ def check_final(candidate, chunks, correction):
     Snapshot.model_validate(candidate)
 
 
-async def run_call(stage, snapshot, context, all_chunks, correction):
+async def run_call(stage, snapshot, context, all_chunks, correction, catalog):
     schema, _ = STAGES[stage]
     diagnostics = []
     request = context
@@ -50,8 +56,13 @@ async def run_call(stage, snapshot, context, all_chunks, correction):
             raw = await call_model(stage, request)
             changes = schema.model_validate(raw).model_dump()
             check_evidence(changes, context["chunks"])
-            candidate = upsert(snapshot, changes)
+            candidate = upsert(snapshot, changes, catalog)
             if stage == "review":
+                review_reasons(snapshot, candidate)
+                previous_checks = {f["id"] for f in review_checks(snapshot)}
+                candidate["findings"] = [
+                    f for f in candidate["findings"] if f["id"] not in previous_checks
+                ]
                 candidate["findings"].extend(review_checks(candidate))
                 check_final(candidate, all_chunks, correction)
             check_links(candidate, stage)
@@ -94,6 +105,9 @@ async def generate(
                 "The correction must reference text from an authorized user message."
             )
     fingerprint = signature(chunks, manifest, base, correction, start_stage)
+    fresh = start_stage == "inventory" and not correction
+    base = Snapshot.model_validate(base).model_dump() if base is not None else None
+    candidates = reuse_candidates(base, chunks) if base and fresh else None
     order = list(STAGES)
     start = order.index(start_stage)
     if (
@@ -107,22 +121,33 @@ async def generate(
         start = order.index(completed) + 1
     else:
         snapshot = (
-            Snapshot.model_validate(base).model_dump()
-            if base is not None
-            else {f: [] for f in COLLECTIONS}
+            base if base is not None and not fresh else {f: [] for f in COLLECTIONS}
         )
         snapshot["manifest"] = deepcopy(manifest)
-        if base:
+        snapshot["analysis_type"] = "design_analysis"
+        if base and not fresh:
             remove_previous_checks(snapshot)
 
     for stage in order[start:]:
+        if stage == "review":
+            snapshot["findings"].extend(review_checks(snapshot))
         if stage == "inventory":
             batches = inventory_batches(chunks)
         else:
             batches = [relevant_chunks(stage, chunks, snapshot, correction)]
         for batch in batches:
-            context = context_for(stage, snapshot, batch, correction)
-            snapshot = await run_call(stage, snapshot, context, chunks, correction)
+            identities = None if stage == "review" else candidates
+            catalog = with_candidates(
+                snapshot, identities, STAGES[stage][0].model_fields
+            )
+            context = context_for(stage, catalog, batch, correction)
+            if identities:
+                context["reanalyze"] = (
+                    "Return this stage's complete output from selected evidence. Prior IDs are for matching meaning only."
+                )
+            snapshot = await run_call(
+                stage, snapshot, context, chunks, correction, catalog
+            )
         save_checkpoint(
             stage,
             {
@@ -132,4 +157,4 @@ async def generate(
             },
         )
     check_final(snapshot, chunks, correction)
-    return snapshot
+    return Snapshot.model_validate(snapshot).model_dump()
