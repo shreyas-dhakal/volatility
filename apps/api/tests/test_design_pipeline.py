@@ -422,3 +422,31 @@ async def test_model_uses_design_override_and_structured_stage_output(monkeypatc
     assert output == {"actors": [], "implementation_findings": []}
     request = parse.await_args.kwargs
     assert request["model"] == "design-test" and request["text_format"] is Inventory
+
+
+def test_call_local_handles_round_trip_without_changing_evidence_text():
+    from galvanise.design_engine.model import reference_aliases, translate
+
+    source_id, owner_id, operation_id = "source-uuid", "contract-uuid", "operation-uuid"
+    context = {
+        "chunks": [{"id": source_id, "text": "contract-uuid appears in the source"}],
+        "prior": {
+            "contracts": [{"id": owner_id, "operations": [{"id": operation_id}]}]
+        },
+    }
+    aliases = reference_aliases(context)
+    encoded = translate(context, aliases)
+    assert encoded["chunks"] == [
+        {"id": "source_1", "text": "contract-uuid appears in the source"}
+    ]
+    result = {
+        "operation_id": "op_1_1",
+        "target_ids": ["contracts_1"],
+        "evidence": [{"chunk_id": "source_1", "excerpt": "source_1"}],
+    }
+    decoded = translate(result, {name: identity for identity, name in aliases.items()})
+    assert decoded == {
+        "operation_id": operation_id,
+        "target_ids": [owner_id],
+        "evidence": [{"chunk_id": source_id, "excerpt": "source_1"}],
+    }
