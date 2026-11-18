@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,7 +34,9 @@ class User(Identity, Base):
     email: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String)
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    clerk_user_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    clerk_user_id: Mapped[str | None] = mapped_column(
+        String, nullable=True, unique=True
+    )
 
 
 class Account(Identity, Base):
@@ -194,3 +197,83 @@ class CoreUseCase(KnowledgeRecord):
 
 class DesignValidation(KnowledgeRecord):
     __mapper_args__: ClassVar[dict] = {"polymorphic_identity": "design_validation"}
+
+
+class DesignSource(ProjectOwned, Base):
+    __tablename__ = "design_source"
+    __table_args__ = (UniqueConstraint("project_id", "origin", "content_hash"),)
+    # The origin distinguishes two files with identical text and different locators.
+    origin: Mapped[str] = mapped_column(String)
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="SET NULL")
+    )
+    message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL")
+    )
+    content_hash: Mapped[str] = mapped_column(String)
+    extraction_status: Mapped[str] = mapped_column(String)
+    locator_json: Mapped[dict] = mapped_column(JSON)
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+
+class DesignChunk(Identity, Base):
+    __tablename__ = "design_chunk"
+    __table_args__ = (UniqueConstraint("source_id", "ordinal"),)
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("design_source.id", ondelete="CASCADE")
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    locator_json: Mapped[dict] = mapped_column(JSON)
+    text: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String)
+
+
+class DesignRevision(ProjectOwned, Base):
+    __tablename__ = "design_revision"
+    parent_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("design_revision.id")
+    )
+    snapshot_json: Mapped[dict] = mapped_column(JSON)
+    diff_json: Mapped[dict] = mapped_column(JSON)
+    source_ids: Mapped[list] = mapped_column(JSON)
+
+
+class DesignHead(Base):
+    __tablename__ = "design_head"
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    current_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("design_revision.id")
+    )
+
+
+class DesignRun(ProjectOwned, Base):
+    __tablename__ = "design_run"
+    __table_args__ = (UniqueConstraint("project_id", "idempotency_key"),)
+    base_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("design_revision.id")
+    )
+    revision_id: Mapped[str | None] = mapped_column(ForeignKey("design_revision.id"))
+    idempotency_key: Mapped[str] = mapped_column(String)
+    operation: Mapped[str] = mapped_column(String)
+    request_json: Mapped[dict] = mapped_column(JSON)
+    source_ids: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String, index=True)
+    stage: Mapped[str] = mapped_column(String)
+    start_stage: Mapped[str] = mapped_column(String)
+    checkpoint_json: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    diagnostics: Mapped[list] = mapped_column(JSON, default=list)
+    claim_token: Mapped[str | None] = mapped_column(String)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now, onupdate=now
+    )
+
+
+class DesignPlan(ProjectOwned, Base):
+    __tablename__ = "design_plan"
+    revision_id: Mapped[str] = mapped_column(ForeignKey("design_revision.id"))
+    input_json: Mapped[dict] = mapped_column(JSON)
+    result_json: Mapped[dict] = mapped_column(JSON)

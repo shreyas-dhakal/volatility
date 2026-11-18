@@ -19,7 +19,68 @@ from galvanise.models import (
 from galvanise.security import decrypt
 
 MAX_TEXT = 300_000
-ALLOWED = {".txt", ".md", ".pdf", ".docx"}
+TEXT_EXTENSIONS = {
+    ".txt",
+    ".md",
+    ".rst",
+    ".csv",
+    ".json",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".cs",
+    ".rb",
+    ".php",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".sql",
+    ".kt",
+    ".kts",
+    ".swift",
+    ".sh",
+    ".html",
+    ".css",
+    ".vue",
+    ".scala",
+    ".dart",
+    ".ex",
+    ".exs",
+}
+ALLOWED = TEXT_EXTENSIONS | {".pdf", ".docx", ".zip"}
+
+
+def relative_path(name):
+    path = PurePosixPath(name.replace("\\", "/"))
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or not path.name
+        or ":" in path.parts[0]
+    ):
+        return path.name or "document"
+    return str(path)
+
+
+def excluded_path(path):
+    return (
+        any(
+            p in ("node_modules", ".git", "vendor", "dist", "build", ".venv")
+            for p in PurePosixPath(path).parts
+        )
+        or PurePosixPath(path).name.startswith(".env")
+        or any(x in path.lower() for x in ("credentials", "id_rsa", ".pem", ".key"))
+    )
 
 
 def redact(text):
@@ -45,8 +106,10 @@ def extract(data, name):
     if len(data) > settings.max_upload_bytes:
         raise ValueError("File exceeds upload limit")
     suffix = PurePosixPath(name).suffix.lower()
-    if suffix in (".txt", ".md"):
+    if suffix in TEXT_EXTENSIONS:
         text = data.decode("utf-8-sig")
+        if "\x00" in text:
+            raise ValueError("Binary data in text file")
     elif suffix == ".pdf":
         from pypdf import PdfReader
 
@@ -69,8 +132,8 @@ def extract(data, name):
             total += len(value)
             if total > MAX_TEXT:
                 raise ValueError("Extracted text exceeds limit")
-            chunks.append(value)
-        text = "\n".join(chunks)
+            chunks.append(value.replace("\f", "\n"))
+        text = "\f".join(chunks)
     elif suffix == ".docx":
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             if (
@@ -99,7 +162,36 @@ def extract(data, name):
     return redact(text)
 
 
-def _extract_child(connection, data, name):
+def extract_project(data, name):
+    """Read archive members in memory inside the bounded extraction subprocess."""
+    if PurePosixPath(name).suffix.lower() != ".zip":
+        return [{"path": name, "text": extract(data, name), "status": "analyzed"}]
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        files = [item for item in archive.infolist() if not item.is_dir()]
+        if len(files) > 1000 or sum(i.file_size for i in files) > 20_000_000:
+            raise ValueError("Project archive exceeds extraction limits")
+        results = []
+        for item in files:
+            path = relative_path(item.filename)
+            member = {"path": path, "text": "", "status": "unsupported"}
+            suffix = PurePosixPath(path).suffix.lower()
+            if (
+                path == item.filename
+                and not excluded_path(path)
+                and suffix in ALLOWED - {".zip"}
+            ):
+                try:
+                    member["text"] = extract(archive.read(item), path)
+                    member["status"] = "analyzed"
+                except Exception:
+                    member["status"] = "unreadable"
+            results.append(member)
+        if not results:
+            raise ValueError("Empty archive")
+        return results
+
+
+def _extract_child(connection, data, name, project):
     try:
         import resource
         import sys
@@ -109,7 +201,9 @@ def _extract_child(connection, data, name):
             resource.setrlimit(
                 resource.RLIMIT_AS, (768 * 1024 * 1024, 768 * 1024 * 1024)
             )
-        connection.send(("ok", extract(data, name)))
+        connection.send(
+            ("ok", extract_project(data, name) if project else extract(data, name))
+        )
     except BaseException:
         connection.send(
             ("error", "Document cannot be extracted within supported limits")
@@ -118,13 +212,13 @@ def _extract_child(connection, data, name):
         connection.close()
 
 
-def extract_bounded(data, name):
+def extract_bounded(data, name, *, project=False):
     import multiprocessing
 
     context = multiprocessing.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
-        target=_extract_child, args=(sender, data, name), daemon=True
+        target=_extract_child, args=(sender, data, name, project), daemon=True
     )
     process.start()
     sender.close()
@@ -166,40 +260,17 @@ def ingest_repository(db, job):
     nodes = []
     total = 0
     indexed = 0
-    text_extensions = {
-        ".py",
-        ".ts",
-        ".tsx",
-        ".js",
-        ".jsx",
-        ".go",
-        ".rs",
-        ".java",
-        ".cs",
-        ".rb",
-        ".php",
-        ".c",
-        ".h",
-        ".cpp",
-        ".sql",
-        ".md",
-        ".txt",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-    }
+    skipped = []
     for entry in entries:
         path = entry["path"]
-        parts = PurePosixPath(path).parts
-        if any(
-            p in ("node_modules", ".git", "vendor", "dist", "build", ".venv")
-            for p in parts
-        ):
-            continue
-        if PurePosixPath(path).name.startswith(".env") or any(
-            x in path.lower() for x in ("credentials", "id_rsa", ".pem", ".key")
-        ):
+        if excluded_path(path):
+            skipped.append(
+                {
+                    "path": path,
+                    "status": "unsupported",
+                    "detail": "Excluded from repository ingestion",
+                }
+            )
             continue
         nodes.append(
             {
@@ -212,21 +283,50 @@ def ingest_repository(db, job):
             }
         )
         if (
-            PurePosixPath(path).suffix.lower() not in text_extensions
+            PurePosixPath(path).suffix.lower() not in TEXT_EXTENSIONS
             or entry.get("size", 0) > 100_000
             or indexed >= 300
         ):
+            status = (
+                "unsupported"
+                if PurePosixPath(path).suffix.lower() not in TEXT_EXTENSIONS
+                else "partially analyzed"
+            )
+            skipped.append(
+                {
+                    "path": path,
+                    "status": status,
+                    "detail": "File type or repository indexing limit",
+                }
+            )
             continue
         total += entry.get("size", 0)
         if total > 3_000_000:
+            skipped.append(
+                {
+                    "path": path,
+                    "status": "partially analyzed",
+                    "detail": "Repository byte limit",
+                }
+            )
             continue
         blob = api(token, f"/repos/{repo}/git/blobs/{entry['sha']}")
         raw = base64.b64decode(blob.get("content", ""))
         if len(raw) > 100_000:
+            skipped.append(
+                {
+                    "path": path,
+                    "status": "partially analyzed",
+                    "detail": "File byte limit",
+                }
+            )
             continue
         try:
             content = redact(raw.decode("utf-8"))
         except UnicodeDecodeError:
+            skipped.append(
+                {"path": path, "status": "unreadable", "detail": "Invalid UTF-8"}
+            )
             continue
         db.add(
             SourceDocument(
@@ -258,6 +358,7 @@ def ingest_repository(db, job):
         "full_name": repo,
         "indexed_text_files": indexed,
         "file_count": len(nodes),
+        "skipped": skipped,
         "dependencies_inferred": False,
     }
 
@@ -288,16 +389,33 @@ def process_next_job():
         try:
             if job.kind == "document":
                 data = base64.b64decode(decrypt(job.payload["content_ciphertext"]))
-                text = extract_bounded(data, job.payload["name"])
-                db.add(
-                    SourceDocument(
+                entries = extract_bounded(data, job.payload["name"], project=True)
+                document_ids = []
+                for entry in entries:
+                    path, content = entry["path"], entry["text"]
+                    metadata = {
+                        "untrusted": True,
+                        "redacted": True,
+                        "upload_id": job.id,
+                        "extraction_status": entry["status"],
+                    }
+                    if job.payload["name"].lower().endswith(".zip"):
+                        metadata["archive"] = job.payload["name"]
+                    if path.lower().endswith(".pdf"):
+                        pages = content.split("\f")
+                        metadata["page_lengths"] = [len(page) for page in pages]
+                        content = "\n".join(pages)
+                    doc = SourceDocument(
                         project_id=job.project_id,
-                        name=job.payload["name"],
-                        content=text,
+                        name=path,
+                        content=content,
                         media_type=job.payload["media_type"],
-                        metadata_json={"untrusted": True, "redacted": True},
+                        metadata_json=metadata,
                     )
-                )
+                    db.add(doc)
+                    db.flush()
+                    document_ids.append(doc.id)
+                job.payload = {**job.payload, "document_ids": document_ids}
             elif job.kind == "github":
                 ingest_repository(db, job)
             else:
