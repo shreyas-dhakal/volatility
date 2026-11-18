@@ -1,16 +1,12 @@
 import base64
 import hashlib
 import secrets
-from datetime import timedelta, timezone
+from datetime import timezone
 
-from argon2 import PasswordHasher
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from galvanise.config import settings
-from galvanise.models import Session, now
-
-hasher = PasswordHasher()
 
 
 def digest(value):
@@ -33,27 +29,6 @@ def decrypt(value):
 
 def aware(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-
-
-def issue_session(db, user, response):
-    token = secrets.token_urlsafe(48)
-    db.add(
-        Session(
-            user_id=user.id,
-            token_hash=digest(token),
-            expires_at=now() + timedelta(days=14),
-        )
-    )
-    db.commit()
-    response.set_cookie(
-        "session",
-        token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=1209600,
-        path="/",
-    )
 
 
 def check_origin(request):

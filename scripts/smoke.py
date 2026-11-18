@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Exercise a running Galvanise API without external credentials.
+"""Exercise an isolated Galvanise API using two Clerk bearer sessions.
 
-Creates uniquely named test accounts/projects; never deletes existing data.
+Uses existing synthetic Clerk identities; creates test projects only.
 Usage: python3 scripts/smoke.py --base-url http://localhost:8000
 """
 from __future__ import annotations
 
 import argparse
-import http.cookiejar
+import os
 import json
 import secrets
 import time
@@ -18,15 +18,16 @@ from typing import Any
 
 
 class Client:
-    def __init__(self, base: str):
+    def __init__(self, base: str, token: str = ''):
         self.base = base.rstrip('/')
-        self.cookies = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
+        self.token = token
+        self.opener = urllib.request.build_opener()
 
     def request(self, method: str, path: str, payload: dict | None = None,
                 expected: tuple[int, ...] = (200,), headers: dict | None = None,
                 body: bytes | None = None) -> Any:
         hdrs = dict(headers or {})
+        if self.token: hdrs['Authorization'] = 'Bearer ' + self.token
         if payload is not None:
             body = json.dumps(payload).encode()
             hdrs['Content-Type'] = 'application/json'
@@ -54,20 +55,16 @@ def main() -> None:
     parser.add_argument('--base-url', default='http://127.0.0.1:8000')
     parser.add_argument('--graph-file', type=Path)
     args = parser.parse_args()
-    a, b = Client(args.base_url), Client(args.base_url)
+    first,second=os.getenv('GALVANISE_SMOKE_TOKEN',''),os.getenv('GALVANISE_SMOKE_OTHER_TOKEN','')
+    if not first or not second: parser.error('Provide two synthetic Clerk session tokens through GALVANISE_SMOKE_TOKEN and GALVANISE_SMOKE_OTHER_TOKEN')
+    a,b,anonymous=Client(args.base_url,first),Client(args.base_url,second),Client(args.base_url)
     health = a.request('GET', '/health')
     print('PASS health')
-    a.request('GET', '/projects', expected=(401,))
+    anonymous.request('GET', '/projects', expected=(401,))
     suffix = secrets.token_hex(5)
-    password = 'Smoke-test-' + secrets.token_hex(16)
-    email = f'smoke-{suffix}@example.test'
-    user = a.request('POST', '/auth/register', {'name': 'Smoke verification', 'email': email, 'password': password}, (200, 201))
-    assert user['email'] == email
-    assert 'password_hash' not in user
-    cookie = next(iter(a.cookies))
-    assert cookie.has_nonstandard_attr('HttpOnly'), 'session cookie must be HttpOnly'
-    assert a.request('GET', '/auth/me')['id'] == user['id']
-    print('PASS account registration and authenticated server session')
+    user=a.request('GET','/auth/me')
+    assert user['id'] and 'password_hash' not in user
+    print('PASS Clerk authenticated local profile')
 
     project = a.request('POST', '/projects', {
         'name': 'Runtime verification ' + suffix, 'description': 'Automated API smoke test',
@@ -77,7 +74,6 @@ def main() -> None:
     assert a.request('GET', project_path)['name'] == project['name']
     a.request('POST', '/projects', {'name': 'Cross origin', 'system_type': 'new', 'description': '', 'objective': 'Blocked'},
               expected=(403,), headers={'Origin': 'https://untrusted.invalid'})
-    b.request('POST', '/auth/register', {'name': 'Other owner', 'email': f'other-{suffix}@example.test', 'password': password}, (200, 201))
     for route in ['', '/conversations', '/records', '/documents', '/sources', '/jobs', '/graphs']:
         b.request('GET', project_path + route, expected=(404,))
     print('PASS project persistence, ownership isolation and cross-origin mutation protection')
@@ -122,12 +118,10 @@ def main() -> None:
     assert reviewed['history'], 'review must retain prior version'
     print('PASS explicit synthetic demo, review history and optimistic concurrency')
 
-    a.request('POST', '/auth/logout', {}, expected=(200, 204))
-    a.request('GET', '/auth/me', expected=(401,))
-    a.request('POST', '/auth/login', {'email': email, 'password': password})
+    anonymous.request('GET','/auth/me',expected=(401,))
     assert any(c['id'] == conversation['id'] for c in a.request('GET', project_path + '/conversations'))
     assert a.request('GET', project_path)['id'] == project['id']
-    print('PASS sign-out, sign-in and persistent project/conversation recovery')
+    print('PASS bearer isolation and persistent project/conversation recovery')
     print('Runtime smoke checks passed. External OpenAI/GitHub calls were not exercised.')
 
 

@@ -21,7 +21,7 @@ from sqlalchemy import select
 from galvanise.config import settings
 from galvanise.database import Base, SessionLocal, engine
 from galvanise.main import app
-from galvanise.models import User, Project, Account, Session as LegacySession, now
+from galvanise.models import User, Project, Account, now
 from galvanise.security import digest, encrypt
 from galvanise import clerk_auth, clerk_identity
 
@@ -53,7 +53,6 @@ def token(**changes):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(settings, "auth_mode", "clerk")
     monkeypatch.setattr(settings, "clerk_issuer", "https://test.clerk.accounts.dev")
     monkeypatch.setattr(settings, "clerk_jwt_key", PUBLIC)
     monkeypatch.setattr(settings, "clerk_authorized_parties", ["http://localhost:3091"])
@@ -143,17 +142,6 @@ def test_tampered_and_machine_tokens_are_rejected(client):
 
 
 def test_legacy_cookie_never_falls_back_in_clerk_mode(client):
-    from datetime import timedelta
-
-    with SessionLocal() as db:
-        db.add(
-            LegacySession(
-                user_id="owner",
-                token_hash=digest("old-token"),
-                expires_at=now() + timedelta(days=1),
-            )
-        )
-        db.commit()
     client.cookies.set("session", "old-token")
     assert client.get("/api/projects").status_code == 401
     assert client.get("/api/health").status_code == 200
@@ -179,7 +167,7 @@ def test_legacy_signin_endpoints_cannot_issue_sessions(client):
                 "password": "long-test-password",
             },
         )
-        assert response.status_code == 410
+        assert response.status_code == 404
         assert "session=" not in response.headers.get("set-cookie", "")
 
 
@@ -188,7 +176,7 @@ def test_github_source_start_requires_bearer_and_returns_navigation_url(
 ):
     monkeypatch.setattr(settings, "github_client_id", "synthetic-client")
     monkeypatch.setattr(settings, "github_client_secret", "synthetic-secret")
-    assert client.get("/api/auth/github/start").status_code == 401
+    assert client.post("/api/auth/github/start").status_code == 401
     auth(client)
     response = client.post("/api/auth/github/start")
     assert response.status_code == 200
@@ -305,3 +293,11 @@ def test_source_link_cannot_steal_another_owners_github_account(client, monkeypa
     assert response.status_code == 409
     with SessionLocal() as db:
         assert db.scalar(select(Account)).user_id == "other"
+
+
+def test_removed_password_endpoints_cannot_be_reenabled_by_old_mode(client,monkeypatch):
+    monkeypatch.setenv('AUTH_MODE','legacy')
+    monkeypatch.setitem(settings.__dict__,'auth_mode','legacy')
+    for route in ('login','register','logout'):
+        assert client.post('/api/auth/'+route,json={'name':'A','email':'new@example.com','password':'synthetic-long-password'}).status_code==404
+    assert client.get('/api/auth/github/start').status_code==405

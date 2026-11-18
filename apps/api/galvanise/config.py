@@ -1,7 +1,6 @@
 import os
 import secrets
 from pathlib import Path
-from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +16,6 @@ class Settings(BaseSettings):
         "postgresql+psycopg://galvanise:galvanise@localhost:5433/galvanise"
     )
     auth_secret: str = ""
-    auth_mode: Literal["legacy", "clerk"] = "clerk"
     clerk_secret_key: str = ""
     clerk_jwt_key: str = ""
     clerk_issuer: str = ""

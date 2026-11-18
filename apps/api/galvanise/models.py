@@ -43,13 +43,6 @@ class Account(Identity, Base):
     token_ciphertext: Mapped[str] = mapped_column(Text)
 
 
-class Session(Identity, Base):
-    __tablename__ = "sessions"
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    token_hash: Mapped[str] = mapped_column(String, unique=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-
 class OAuthState(Identity, Base):
     __tablename__ = "oauth_states"
     state_hash: Mapped[str] = mapped_column(String, unique=True)

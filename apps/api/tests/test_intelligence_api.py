@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
+from tests.auth_helpers import sign_in,sign_out
 from sqlalchemy import select
 from galvanise.main import app
 from galvanise.database import Base,engine,SessionLocal
@@ -20,7 +21,7 @@ def setup_function():
 
 
 def create(c):
-    assert c.post('/api/auth/register',json={'email':'intel@example.com','password':'long-password-123','name':'Owner'}).status_code==200
+    sign_in(c,'intel@example.com')
     response=c.post('/api/projects/demo');assert response.status_code==200,response.text
     return response.json()['id']
 
@@ -33,9 +34,9 @@ def test_demo_is_explicit_synthetic_and_graph_routes_authorized():
         assert c.get(f'/api/projects/{pid}/graphs/{gid}/paths',params={'source':'orders','target':'supplier-client'}).json()['paths']==[['orders','purchasing','supplier-client']]
         assert c.post(f'/api/projects/{pid}/graphs/import',files={'file':('bad.json',b'{"nodes":[],"links":[{"source":[],"target":{}}]}')}).status_code==422
         assert c.post(f'/api/projects/{pid}/evaluate',json={'scenario':'Add supplier','graph_id':gid,'node_ids':['purchasing']}).json()['mode']=='structural'
-        c.post('/api/auth/logout')
+        sign_out(c)
         assert c.get(f'/api/projects/{pid}/graphs').status_code==401
-        c.post('/api/auth/register',json={'email':'other@example.com','password':'long-password-123','name':'Other'})
+        sign_in(c,'other@example.com','Other')
         assert c.get(f'/api/projects/{pid}/graphs').status_code==404
 
 

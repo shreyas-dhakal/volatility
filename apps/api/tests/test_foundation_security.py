@@ -8,10 +8,11 @@ os.environ.update(
 )
 from datetime import timedelta
 from fastapi.testclient import TestClient
+from tests.auth_helpers import sign_in,sign_out
 from sqlalchemy import select
 from galvanise.main import app
 from galvanise.database import Base, engine, SessionLocal
-from galvanise.models import Session as AuthSession, OAuthState, IngestionJob, now
+from galvanise.models import OAuthState, IngestionJob, now
 from galvanise.config import settings
 from galvanise.security import encrypt, decrypt, digest
 from galvanise.services.ingestion import recover_jobs, extract
@@ -21,22 +22,6 @@ import pytest
 def setup_function():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-
-
-def test_sessions_are_hashed_and_expire_and_cookie_is_http_only():
-    with TestClient(app) as c:
-        r = c.post(
-            "/api/auth/register",
-            json={"name": "A", "email": "a@example.com", "password": "1234567890abc"},
-        )
-        assert "HttpOnly" in r.headers["set-cookie"]
-        token = c.cookies["session"]
-        with SessionLocal() as db:
-            session = db.scalar(select(AuthSession))
-            assert session.token_hash == digest(token) and session.token_hash != token
-            session.expires_at = now() - timedelta(seconds=1)
-            db.commit()
-        assert c.get("/api/auth/me").status_code == 401
 
 
 def test_oauth_state_rejects_missing_cookie_expired_and_replay():
@@ -116,9 +101,10 @@ def test_oauth_requests_readonly_identity_scopes_and_hashes_state(monkeypatch):
     monkeypatch.setattr(settings, "github_client_id", "test-client")
     monkeypatch.setattr(settings, "github_client_secret", "test-secret")
     with TestClient(app) as c:
-        r = c.get("/api/auth/github/start", follow_redirects=False)
-        assert r.status_code == 307
-        query = parse_qs(urlparse(r.headers["location"]).query)
+        sign_in(c)
+        r = c.post("/api/auth/github/start")
+        assert r.status_code == 200
+        query = parse_qs(urlparse(r.json()["url"]).query)
         assert set(query["scope"][0].split()) == {"read:user", "user:email"}
         state = query["state"][0]
         with SessionLocal() as db:
@@ -130,10 +116,7 @@ def test_oauth_requests_readonly_identity_scopes_and_hashes_state(monkeypatch):
 def test_upload_limit_and_foreign_project_routes(monkeypatch):
     monkeypatch.setattr(settings, "max_upload_bytes", 10)
     with TestClient(app) as c:
-        c.post(
-            "/api/auth/register",
-            json={"name": "A", "email": "a@example.com", "password": "1234567890abc"},
-        )
+        sign_in(c,"a@example.com")
         p = c.post("/api/projects", json={"name": "P"}).json()
         path = f"/api/projects/{p['id']}"
         assert (
@@ -142,11 +125,8 @@ def test_upload_limit_and_foreign_project_routes(monkeypatch):
             ).status_code
             == 413
         )
-        c.post("/api/auth/logout")
-        c.post(
-            "/api/auth/register",
-            json={"name": "B", "email": "b@example.com", "password": "1234567890abc"},
-        )
+        sign_out(c)
+        sign_in(c,"b@example.com")
         for suffix in ("/sources", "/documents", "/jobs", "/records", "/conversations"):
             assert c.get(path + suffix).status_code == 404
         assert (
@@ -157,7 +137,7 @@ def test_upload_limit_and_foreign_project_routes(monkeypatch):
         )
 
 
-def test_github_email_match_requires_explicit_linking_and_consumes_state(monkeypatch):
+def test_github_source_link_uses_existing_owner_and_consumes_state(monkeypatch):
     from galvanise.routes import auth
     from types import SimpleNamespace
     from galvanise.models import User
@@ -186,15 +166,18 @@ def test_github_email_match_requires_explicit_linking_and_consumes_state(monkeyp
         db.add(User(email="existing@example.com", name="Local user"))
         db.commit()
     with TestClient(app) as c:
-        start = c.get("/api/auth/github/start", follow_redirects=False)
-        state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
-        r = c.get("/api/auth/github/callback", params={"state": state, "code": "test"})
-        assert r.status_code == 409
+        sign_in(c,"existing@example.com")
+        start = c.post("/api/auth/github/start")
+        state = parse_qs(urlparse(start.json()["url"]).query)["state"][0]
+        r = c.get("/api/auth/github/callback", params={"state": state, "code": "test"},follow_redirects=False)
+        assert r.status_code == 307
         assert "sensitive-token" not in r.text
+        assert "session=" not in r.headers.get("set-cookie", "")
+        with SessionLocal() as db: assert len(db.scalars(select(User)).all())==1
         assert (
             c.get(
                 "/api/auth/github/callback", params={"state": state, "code": "test"}
             ).status_code
             == 400
         )
-        assert c.get("/api/auth/me").status_code == 401
+        assert c.get("/api/auth/me").status_code == 200

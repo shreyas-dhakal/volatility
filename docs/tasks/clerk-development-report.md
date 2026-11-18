@@ -1,69 +1,57 @@
-# Clerk development integration checkpoint
+# Clerk-only cleanup verification
 
-Development implementation is present; live setup and authentication validation
-remain blocked on the user's host CLI login and selected-instance configuration.
-This is not a completed Clerk migration or a production-ready sign-in claim.
+The application now authenticates exclusively with Clerk. Removed backend
+password registration/login/logout handlers, cookie-session issuance/verification,
+Session ORM model, obsolete cleanup command, frontend password form, all mode
+switches and sign-out/request fallbacks. The old environment flag cannot reactivate
+local authentication. Source OAuth is authenticated POST-only and cannot create
+owners or sign-in sessions.
 
-## Implemented
+The new Alembic migration `19d05c88b712` drops only the obsolete sessions table.
+Tests prove owner IDs, projects, source ciphertext and unmigrated password digests
+survive. Password digests remain solely for offline import; argon2-cffi is used
+only for import-format parsing and synthetic migration tests, never runtime login.
 
-- Additive unique Clerk-subject mapping preserves local UUIDs and every ownership
-  foreign key. New verified users are provisioned once, including concurrent first
-  requests; external-ID reconciliation is required before access. Profile changes
-  synchronize verified email/name without changing ownership or merging conflicts.
-- FastAPI independently verifies bearer session tokens through Clerk's Python
-  SDK, checks issuer/origin/time/subject/session, and rejects legacy-cookie
-  fallback in Clerk mode. Existing data-router ownership checks are preserved.
-- Backend API import tooling defaults to read-only preflight, preserves Argon2
-  digests, reserves emails, reconciles timeout/429 retries and persists mappings
-  as checkpoints. Development apply requires explicit operator confirmation.
-- Source OAuth remains separate from Clerk social sign-in; encrypted GitHub tokens
-  and AUTH_SECRET are retained. Clerk-mode source linking starts with an
-  authenticated POST and never signs in, creates owners or issues local sessions.
-- Next.js 16 proxy, asynchronous server protection, body-level ClerkProvider,
-  Suspense sign-in/sign-up forms and visible account controls use Core 3 SDK 7.
-  Missing keys deliberately show a setup-needed page without keyless setup.
-- JSON, multipart and SSE obtain bearer tokens per request; missing sessions and
-  account-change races fail before sending. Account changes unmount previous
-  workspace state/streams. Settings/sign-out work before the first project.
-- Coordinator's sidebar Settings gear refinement (main 592dfd2) is preserved.
+## Exact checks
 
-## Verified in this worker
+- Backend suite: **133 passed**, including real signed-token SDK verification,
+  removed routes, rejected cookies/obsolete mode flag, migration preservation,
+  source-link ownership/replay, domain authorization/ingestion/design regressions.
+- Frontend suite: **54 passed** across nine files. Old local-form tests were
+  removed; Clerk loading/account change/sign-out, required bearer headers and
+  multipart/SSE remain covered.
+- TypeScript: pass. Configured Next production build: pass (protected root is
+  dynamic, sign-in/up dynamic). Astryx doctor: **20 pass, 3 warnings, 0 failures**;
+  warnings cover existing font-proof/source-style findings.
+- CLI doctor: login, selected-app link/reachability and development-key checks pass;
+  remaining warnings are optional production instance and shell completion.
+- Hostname self-proxy regression fixed in `1682ac5`, with regression-first launcher
+  test: Next binds the validated WEB_URL hostname rather than hardcoded IPv4.
 
-- `APP_ENV=test DATABASE_URL=sqlite:// AUTH_MODE=legacy uv run --project apps/api pytest apps/api/tests -q`: **132 passed**.
-- `npm test`: **56 passed** across nine files.
-- `npx tsc -p apps/web/tsconfig.json --noEmit`: passes.
-- `API_URL=http://127.0.0.1:8091 npm run build`: passes, including TypeScript.
-- Ruff checks for the four new backend modules: pass; `git diff --check`: pass.
-- Synthetic SQLite migration upgrade/downgrade preserves an existing owner/project.
-- `npx astryx doctor --built apps/web`: exit 0, 20 pass, zero failures, three
-  warnings covering font proof and the existing source-style rubric.
-- Running isolated API **8091**: health 200; unauthenticated profile, project and
-  design endpoints 401. The web **3091** rewrite also returns project 401.
-- Orca browser inspected the missing-configuration state at localhost:3091 and
-  its screenshot; the page renders the centered Astryx login-template frame.
+## Live development evidence
 
-Existing domain fixtures remain in explicit legacy mode; additional Clerk tests
-exercise real locally signed JWTs through the installed SDK, with the external
-identity service replaced at its network boundary. This proves isolated API
-contracts, not a live Clerk session or live import compatibility.
+Selected app `app_3MEbdIf6xt3sJt7mulZI7WMSb6y`, development instance
+`ins_3MEbdHY1zAfwUT1lUYMK2vNjdQg`, issuer
+`https://main-monkey-9841.clerk.accounts.dev`. CLI materialized development keys
+directly into ignored environment files; no file contents or keys were displayed.
+No init, replacement application, production changes or real-user bulk import ran.
 
-## Pending before completion
+Two generated synthetic users were imported from a disposable SQLite database,
+with unchanged UUID/external IDs and reserved email identifiers. The selected
+instance accepted the original Argon2 digest and its Backend API verified the
+synthetic password successfully. Both synthetic users were deleted and external-ID
+absence verified; the temporary credential fixture was deleted. This proves live
+hash-import compatibility, not a completed third-party GitHub OAuth consent flow.
 
-1. User runs `npx -y clerk@latest auth login` in their own host terminal and
-   confirms completion. No account commands have run since `auth_required`.
-2. Because account-free implementation has now installed the integration, skip
-   init. Reuse/link only `app_3MEbdIf6xt3sJt7mulZI7WMSb6y` and restore development
-   configuration through the supported CLI; never enumerate/select other apps.
-3. Provision matching frontend keys and API issuer/authorized origins/server key
-   through the host; retain existing source-integration credentials independently.
-   No environment/claim files have been read or printed by this worker.
-4. Run Clerk doctor and resolve actual findings. Prove synthetic Argon2 import,
-   password and GitHub-only sign-in/linking, profile, source access, uploads/jobs,
-   streaming, expiry and sign-out against the selected development instance, then
-   clean up only the authorized synthetic test users.
-5. Repeat the configured production build and inspect actual visible controls in
-   Orca. An author self-review has been performed; no helper agent was dispatched.
+Coordinator activated main Clerk services and performed the separately authorized
+single-owner recovery after independent operator evidence, preserving the owner's
+UUID and existing project. This worker did not alter main configuration, services,
+credential rows or that recovery mapping. Main integration/restart is coordinator
+owned. Worker services use only disposable data on 3091/8091.
 
-Real-user imports and production cutover remain separately gated. Main Docker
-services on 3002/8000 and their real database have not been modified. The worker
-uses its own ports and disposable `/tmp/galvanise-clerk-worker.db`.
+Domain test fixtures now mock the external identity boundary; there are no local
+password/session fixtures or production bypasses. The operator recovery procedure
+is documented in CLERK_DEVELOPMENT.md; no new public recovery endpoint/tool was
+added. Full provider-consent, production configuration and existing-user bulk
+migration remain outside this bounded cleanup. Author self-review only; no helper
+agents were dispatched.

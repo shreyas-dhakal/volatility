@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.auth_helpers import sign_in,sign_out
 from galvanise.database import Base, SessionLocal, engine
 from galvanise.main import app
 from galvanise.models import KnowledgeRecord, SourceDocument
@@ -25,14 +26,7 @@ def client():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with TestClient(app) as c:
-        c.post(
-            "/api/auth/register",
-            json={
-                "email": "design@example.com",
-                "password": "long-password-123",
-                "name": "Architect",
-            },
-        )
+        sign_in(c,'design@example.com','Architect')
         yield c
 
 
@@ -203,16 +197,9 @@ def test_manual_intake_validation_evidence_and_owner_isolation(client):
         db.commit()
         did = d.id
     assert intake(client, pid, evidence_ids=[did]).status_code == 422
-    client.post("/api/auth/logout")
+    sign_out(client)
     assert client.get(f"/api/projects/{pid}/design").status_code == 401
-    client.post(
-        "/api/auth/register",
-        json={
-            "email": "outside@example.com",
-            "password": "long-password-123",
-            "name": "Outside",
-        },
-    )
+    sign_in(client,'outside@example.com','Outside')
     for method, path, body in [
         ("get", "", None),
         ("post", "/use-cases", {}),
@@ -846,6 +833,12 @@ def test_existing_alembic_schema_supports_new_discriminators_without_migration(
         auth_spec.loader.exec_module(auth_migration)
         auth_migration.op = Operations(context)
         auth_migration.upgrade()
+        drop_path = Path(__file__).parents[1] / "alembic/versions/19d05c88b712_remove_local_auth_sessions.py"
+        drop_spec = importlib.util.spec_from_file_location("remove_sessions", drop_path)
+        drop_migration = importlib.util.module_from_spec(drop_spec)
+        drop_spec.loader.exec_module(drop_migration)
+        drop_migration.op = Operations(context)
+        drop_migration.upgrade()
         assert compare_metadata(context, Base.metadata) == []
     with Session(migrated) as db:
         user = User(email="migration@example.com", name="Migrated")

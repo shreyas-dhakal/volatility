@@ -7,6 +7,7 @@ os.environ.update(
     AUTO_CREATE_TABLES="true",
 )
 from fastapi.testclient import TestClient
+from tests.auth_helpers import sign_in,sign_out
 from galvanise.main import app
 from galvanise.database import Base, engine, SessionLocal
 from galvanise.models import KnowledgeRecord, IngestionJob
@@ -19,11 +20,7 @@ def setup_function():
 
 
 def signup(c, email="owner@example.com"):
-    r = c.post(
-        "/api/auth/register",
-        json={"email": email, "password": "long-password-123", "name": "Owner"},
-    )
-    assert r.status_code == 200, r.text
+    sign_in(c,email)
 
 
 def project(c):
@@ -51,17 +48,11 @@ def test_auth_ownership_sessions_and_origins():
             ).status_code
             == 403
         )
-        c.post("/api/auth/logout")
+        sign_out(c)
         assert c.get("/api/auth/me").status_code == 401
         signup(c, "other@example.com")
         assert c.get("/api/projects/" + p["id"]).status_code == 404
-        assert (
-            c.post(
-                "/api/auth/login",
-                json={"email": "owner@example.com", "password": "wrong"},
-            ).status_code
-            == 401
-        )
+
 
 
 def test_review_is_versioned_and_stale_updates_rejected():

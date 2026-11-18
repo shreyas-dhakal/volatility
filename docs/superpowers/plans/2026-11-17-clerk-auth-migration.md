@@ -10,7 +10,7 @@
 
 **Spec:** Dispatched task `task_a4315c15bc3a`, selected application `app_3MEbdIf6xt3sJt7mulZI7WMSb6y`, and the user-approved setup checklist subject to the separate migration-plan approval gate.
 
-**Status:** Approved for development integration and isolated synthetic tests via coordinator message `msg_4a3ead66bf74`; production and real-user imports remain separately gated. The original inspection-only phase is complete. Implementation is underway; host CLI login and live instance validation are pending. No environment/claim files have been read, and no real-user imports or production cutover have run.
+**Status:** Historical proposal, superseded by the user's Clerk-only cleanup requirement: no local sign-in/session code or reactivation mode remains. Approved for development integration and isolated synthetic tests via coordinator message `msg_4a3ead66bf74`; production and real-user imports remain separately gated. The original inspection-only phase is complete. Implementation is underway; host CLI login and live instance validation are pending. No environment/claim files have been read, and no real-user imports or production cutover have run.
 
 ## Constraints and approval decision
 
@@ -93,7 +93,7 @@ For UI edits retain the existing Astryx page and sections. Read needed component
 ### 3. Build and prove end-to-end Clerk authentication
 
 - [ ] First add failing backend tests for invalid/expired/wrong-origin/wrong-instance/token-type rejection, unknown subject, original owner access and other-owner 404. Test all route families including direct API and chat before response streaming.
-- [ ] Implement verifier and dependency mapping; adapt `/me`, source-link OAuth and legacy endpoint cutover behind a single coordinated rollout setting (legacy or Clerk, never permissive fallback).
+- [ ] Implement verifier and dependency mapping; adapt `/me`, source-link OAuth and legacy endpoint cutover with Clerk as the sole authentication boundary.
 - [ ] Add failing web tests for auth loading, fresh headers on JSON/upload/SSE, account switch cleanup and sign-out; implement provider, proxy, visible controls, protected page and client adapter with the frontend owner's agreement.
 - [ ] Replace local-registration fixtures in existing intelligence/foundation tests with trusted test identities; keep real-verifier unit tests independent of mocked route fixtures. Preserve repository ingestion and encryption regressions.
 - [ ] Commit/push the verified backend/frontend unit. Do not advertise completion with only frontend protection working.
@@ -108,7 +108,7 @@ For UI edits retain the existing Astryx page and sections. Read needed component
 
 ## Rollback and acceptance gates
 
-Rollback before cutover is reverting the staged deploy; additive mappings/imported Clerk users can remain without serving traffic. After cutover, a coordinated rollback restores both tiers to legacy mode, invalidates Clerk access for the legacy deployment, and forces legacy reauthentication. Do not restore revoked sessions. New Clerk-only users, password changes and source credentials changed after the snapshot require reconciliation; freeze writes and forward-fix if they cannot safely be represented in legacy auth. A blind database snapshot restore would lose work and is not an acceptable default rollback.
+The user explicitly removed the proposed compatibility rollback. Recovery now preserves data through additive ownership mappings and independent operator reconciliation; application authentication remains Clerk-only.
 
 Acceptance requires unchanged local ownership IDs, no duplicate imported owners, synthetic and representative password/GitHub flows passing, existing GitHub credentials still decrypting, every protected route rejecting unauthenticated direct requests, cross-owner denial, functional uploads/jobs/chat and visible auth controls, successful build/tests/doctors, and a running app inspected in Orca. Real-instance validation requires authenticated access and operator configuration; unavailable checks remain blockers, not assumed passes.
 

@@ -4,15 +4,15 @@ let tokenGetter: TokenGetter | undefined;
 export function configureTokenGetter(getter: TokenGetter | undefined) { tokenGetter = getter; }
 async function authorizationHeaders(): Promise<Record<string,string>> {
   const getter = tokenGetter;
-  if (!getter) return {};
+  if (!getter) throw new ApiError(401, 'Sign in required');
   const token = await getter();
   if (!token || getter !== tokenGetter) throw new ApiError(401, 'Sign in required');
   return { Authorization: `Bearer ${token}` };
 }
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const authorization = tokenGetter ? await authorizationHeaders() : {};
+  const authorization = await authorizationHeaders();
   let response: Response;
-  try { response = await fetch(`/api${path}`, { credentials: 'include', ...init, headers: { ...(init.body instanceof FormData ? {} : {'Content-Type':'application/json'}), ...Object.fromEntries(new Headers(init.headers)), ...authorization } }); }
+  try { response = await fetch(`/api${path}`, { credentials: path === '/auth/github/start' ? 'same-origin' : 'omit', ...init, headers: { ...(init.body instanceof FormData ? {} : {'Content-Type':'application/json'}), ...Object.fromEntries(new Headers(init.headers)), ...authorization } }); }
   catch { throw new ApiError(0, 'Cannot reach the server. Check that the API is running, then try again.'); }
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new ApiError(response.status, typeof body.detail === 'string' ? body.detail : Array.isArray(body.detail) ? body.detail.map((e: {loc?: string[];msg?: string}) => `${e.loc?.slice(1).join('.') || 'Input'}: ${e.msg || 'Invalid value'}`).join('; ') : `Request failed (${response.status}). Please try again.`); }
   return response.status === 204 ? undefined as T : response.json();
@@ -25,7 +25,7 @@ export async function consumeSSE(body: ReadableStream<Uint8Array>, receive: (eve
   try { while (true) { const {value,done} = await reader.read(); buffer += decoder.decode(value, {stream:!done}); buffer=buffer.replace(/\r\n/g,'\n'); let end; while ((end=buffer.indexOf('\n\n'))>=0) { parse(buffer.slice(0,end)); buffer=buffer.slice(end+2); } if (done) { if (buffer.trim()) parse(buffer); break; } } } finally { reader.releaseLock(); }
 }
 export async function chat(path: string, content: string, receive: (event: StreamEvent) => void, signal?: AbortSignal) {
- const authorization = tokenGetter ? await authorizationHeaders() : {};
- let r: Response; try { r = await fetch(`/api${path}`, {method:'POST', credentials:'include',headers:{'Content-Type':'application/json',...authorization},body:JSON.stringify({content}),signal}); } catch(e) { if ((e as Error).name === 'AbortError') throw e; throw new ApiError(0, 'Cannot reach the server. Check that the API is running, then try again.'); }
+ const authorization = await authorizationHeaders();
+ let r: Response; try { r = await fetch(`/api${path}`, {method:'POST', credentials:'omit',headers:{'Content-Type':'application/json',...authorization},body:JSON.stringify({content}),signal}); } catch(e) { if ((e as Error).name === 'AbortError') throw e; throw new ApiError(0, 'Cannot reach the server. Check that the API is running, then try again.'); }
  if (!r.ok) { const data=await r.json().catch(()=>({})); throw new ApiError(r.status,data.detail || 'Conversation failed. Please try again.'); } if(!r.body) throw new Error('Streaming unavailable'); await consumeSSE(r.body,receive);
 }

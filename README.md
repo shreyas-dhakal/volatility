@@ -21,7 +21,7 @@ cd ../..
 ./scripts/run-local.sh
 ```
 
-Open the URL printed by the runner (http://localhost:3000 by default; this verified workspace uses http://localhost:3002 because 3000 is occupied). Register an account and create a project. Local registration requires a password of at least 10 characters. PostgreSQL listens on **5433**, configurable with POSTGRES_PORT; keep DATABASE_URL consistent. Runtime migrations are mandatory. `AUTO_CREATE_TABLES=true` is an explicit local/test convenience only.
+Open the URL printed by the runner (http://localhost:3000 by default; this verified workspace uses http://localhost:3002 because 3000 is occupied). Sign in through Clerk and create a project. Configure the existing development application as described in [Clerk development](docs/CLERK_DEVELOPMENT.md); local password/session authentication has been removed. PostgreSQL listens on **5433**, configurable with POSTGRES_PORT; keep DATABASE_URL consistent. Runtime migrations are mandatory. `AUTO_CREATE_TABLES=true` is an explicit local/test convenience only.
 
 Run manually in two terminals if preferred:
 
