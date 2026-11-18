@@ -5,8 +5,54 @@
   "settings": [
     {
       "thing": "font",
-      "value": "system",
+      "value": "Geist, Arial, sans-serif",
       "source": "dial"
+    },
+    {
+      "thing": "--font-family-code",
+      "value": "Geist Mono, monospace",
+      "source": "token"
+    },
+    {
+      "thing": "--color-background-body",
+      "value": "#ffffff",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#0a0a0a",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-text-secondary",
+      "value": "#737373",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-accent",
+      "value": "#262626",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-on-accent",
+      "value": "#fafafa",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--radius-container",
+      "value": "1rem",
+      "source": "token"
+    },
+    {
+      "thing": "headings",
+      "value": "medium",
+      "source": "dial",
+      "axis": "weight"
     }
   ],
   "lifted": []

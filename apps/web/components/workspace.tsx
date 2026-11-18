@@ -25,7 +25,7 @@ const s=stylex.create({
  railFooter:{borderTop:'var(--border-width) solid var(--color-border)',flexShrink:0},
  railTop:{flexShrink:0},
  history:{maxHeight:'min(16rem, 30dvh)',overflowY:'auto'},
- sectionHeading:{paddingInline:'var(--spacing-3)'},
+ sectionHeading:{fontFamily:'var(--font-family-code)',paddingInline:'var(--spacing-3)'},
  main:{flexGrow:1,minWidth:0,minHeight:0},
  header:{borderBottom:'var(--border-width) solid var(--color-border)',flexShrink:0,minHeight:'4rem'},
  content:{flexGrow:1,minHeight:0,overflowY:'auto'},

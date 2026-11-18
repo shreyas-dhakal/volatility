@@ -5,6 +5,7 @@
 
 import {systemUiTheme as _astryxTheme0} from "./src/themes/system-ui/system-ui.js";
 import "./src/themes/system-ui/system-ui.css";
+import "./src/themes/system-ui/system-ui.fonts.css";
 
 export const themes = {
   "system-ui": _astryxTheme0,
