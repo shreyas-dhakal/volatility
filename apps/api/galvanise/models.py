@@ -272,3 +272,56 @@ class DesignPlan(ProjectOwned, Base):
     revision_id: Mapped[str] = mapped_column(ForeignKey("design_revision.id"))
     input_json: Mapped[dict] = mapped_column(JSON)
     result_json: Mapped[dict] = mapped_column(JSON)
+
+
+class WorkflowMigration(ProjectOwned, Base):
+    __tablename__ = "workflow_migration"
+    __table_args__ = (UniqueConstraint("revision_id", "operation_id"),)
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("design_revision.id", ondelete="CASCADE")
+    )
+    operation_id: Mapped[str] = mapped_column(String)
+    selection_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    scenarios_json: Mapped[list] = mapped_column(JSON, default=list)
+    state_version: Mapped[int] = mapped_column(Integer, default=1)
+    __mapper_args__: ClassVar[dict] = {"version_id_col": state_version}
+
+
+class WorkflowMigrationJob(ProjectOwned, Base):
+    __tablename__ = "workflow_migration_job"
+    __table_args__ = (UniqueConstraint("migration_id", "request_id"),)
+    migration_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_migration.id", ondelete="CASCADE"), index=True
+    )
+    request_id: Mapped[str] = mapped_column(String)
+    action: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    input_json: Mapped[dict] = mapped_column(JSON)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    claim_token: Mapped[str | None] = mapped_column(String)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkflowBaseline(ProjectOwned, Base):
+    __tablename__ = "workflow_baseline"
+    migration_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_migration.id", ondelete="CASCADE"), unique=True
+    )
+    capture_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_migration_job.id", ondelete="CASCADE")
+    )
+    approved_by: Mapped[str] = mapped_column(String)
+    artifact_json: Mapped[dict] = mapped_column(JSON)
+
+
+class WorkflowAcceptedPatch(ProjectOwned, Base):
+    __tablename__ = "workflow_accepted_patch"
+    migration_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_migration.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_migration_job.id", ondelete="CASCADE"), unique=True
+    )
+    approved_by: Mapped[str] = mapped_column(String)
+    reason: Mapped[str] = mapped_column(Text)

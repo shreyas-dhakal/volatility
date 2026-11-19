@@ -190,8 +190,14 @@ def store_document(db, doc):
     locator = {"kind": kind, "path": doc.name}
     if doc.source_id:
         locator["repository_id"] = doc.source_id
+        if meta.get("sha"):
+            locator["git_blob"] = meta["sha"]
+        if meta.get("tree_sha"):
+            locator["git_tree"] = meta["tree_sha"]
     if meta.get("archive"):
         locator["archive"] = meta["archive"]
+        if meta.get("upload_id"):
+            locator["upload_id"] = meta["upload_id"]
     status = meta.get("extraction_status", "analyzed")
     detail = ""
     sections = [({"section": doc.name}, doc.content)]
@@ -344,7 +350,7 @@ def collect(db, project_id, selection):
     return list(dict.fromkeys(source_ids))
 
 
-def evidence(db, project_id, source_ids):
+def evidence(db, project_id, source_ids, *, include_provenance=False):
     sources = {
         s.id: s
         for s in db.scalars(
@@ -359,9 +365,10 @@ def evidence(db, project_id, source_ids):
         .where(DesignChunk.source_id.in_(source_ids))
         .order_by(DesignChunk.source_id, DesignChunk.ordinal)
     ):
-        grouped[c.source_id].append(
-            {"id": c.id, "text": c.text, "locator": c.locator_json}
-        )
+        chunk = {"id": c.id, "text": c.text, "locator": c.locator_json}
+        if include_provenance:
+            chunk["source_id"] = c.source_id
+        grouped[c.source_id].append(chunk)
     manifest = []
     chunks = []
     for sid in source_ids:
@@ -375,6 +382,7 @@ def evidence(db, project_id, source_ids):
                 "locator": source.locator_json,
                 "status": source.extraction_status,
                 "detail": source.detail,
+                **({"content_hash": source.content_hash} if include_provenance else {}),
                 "chunk_count": len(grouped[sid]),
             }
         )

@@ -7,7 +7,15 @@ from fastapi.responses import JSONResponse
 
 from galvanise.config import settings
 from galvanise.database import Base, engine
-from galvanise.routes import auth, design, design_engine, projects, records, sources
+from galvanise.routes import (
+    auth,
+    design,
+    design_engine,
+    migration,
+    projects,
+    records,
+    sources,
+)
 from galvanise.security import check_origin
 from galvanise.services.ingestion import run_worker
 
@@ -61,5 +69,6 @@ for router in (
     records.router,
     design.router,
     design_engine.router,
+    migration.router,
 ):
     app.include_router(router)

@@ -366,7 +366,7 @@ def ingest_repository(db, job):
                 name=path,
                 content=content,
                 media_type="text/plain",
-                metadata_json={"sha": entry["sha"], "untrusted": True},
+                metadata_json={"sha": entry["sha"], "tree_sha": tree.get("sha"), "untrusted": True},
             )
         )
         indexed += 1
@@ -514,11 +514,13 @@ def process_next_job():
 def run_worker(stop):
     import threading
     from galvanise.design_engine.worker import consume
+    from galvanise.migration.jobs import consume as consume_migrations
 
     recover_jobs()
     # Both consumers use the existing worker lifecycle. Lengthy model calls must
     # leave the document queue available for uploads and repository indexing.
     threading.Thread(target=consume, args=(stop,), daemon=True).start()
+    threading.Thread(target=consume_migrations, args=(stop,), daemon=True).start()
     while not stop.is_set():
         try:
             if not process_next_job():

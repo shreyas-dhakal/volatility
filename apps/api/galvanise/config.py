@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     design_model: str = ""
     openai_model: str = "gpt-5.5"
+    workflow_migration_config: str = ""
+    workflow_migration_scratch: str = ""
     max_upload_bytes: int = 10 * 1024 * 1024
     auto_create_tables: bool = False
 

@@ -10,8 +10,9 @@ import {Button,Heading,Text,VStack} from './ui';
 import {Citations,DetailValue,label} from './engine-evidence';
 import {DecisionRows} from './engine-volatility';
 import {useEngine} from './engine-session';
+import {WorkflowMigrationEntry} from './workflow-migration';
 
-export function DetailRows({title,rows,names}:{title:string;rows:Record<string,unknown>[];names:Map<string,string>}){
+export function DetailRows({title,rows,names,actions}:{title:string;rows:Record<string,unknown>[];names:Map<string,string>;actions?:(row:Record<string,unknown>)=>React.ReactNode}){
   return <VStack gap={2}><Heading level={3}>{title}</Heading>
     {rows.length?rows.map((row,i)=>{
       const titleText=String(row.display_title||entityTitle(row)||('Item '+(i+1)));
@@ -21,6 +22,7 @@ export function DetailRows({title,rows,names}:{title:string;rows:Record<string,u
             <Text type="supporting" color="secondary">{label(key)}</Text><DetailValue value={value} names={names}/>
           </VStack>)}
           <Citations items={(row as Entity).evidence}/>
+          {actions?.(row)}
         </VStack>
       </Collapsible><Divider/></VStack>;
     }):<Text color="secondary">None recorded</Text>}
@@ -54,14 +56,16 @@ function DependencyDiagram({snapshot,names}:{snapshot:Snapshot;names:Map<string,
     {!graph.edges.length&&<Text color="secondary">No validated dependencies.</Text>}
   </VStack>;
 }
-export function RevisionPanel({revision,tab,objective}:{revision:Revision;tab:string;objective:string}){
+export function RevisionPanel({revision,tab,objective,existing=false}:{revision:Revision;tab:string;objective:string;existing?:boolean}){
   const s=revision.snapshot,names=useMemo(()=>entityNames(s),[s]);
-  const rows=(title:string,items:Record<string,unknown>[]) => <DetailRows title={title} rows={items} names={names}/>;
+  const savedCase = (id: string) => s.use_cases.some(item=>item.id===id && item.basis==='observed' && !!item.evidence?.length);
+  const entry = (id: string) => existing && <WorkflowMigrationEntry key={revision.id+id} revisionId={revision.id} operationId={id}/>;
+  const rows=(title:string,items:Record<string,unknown>[],actions?:(row:Record<string,unknown>)=>React.ReactNode) => <DetailRows title={title} rows={items} names={names} actions={actions}/>;
   if(tab==='Overview')return <VStack gap={5}>
     <VStack gap={1}><Heading level={3}>System purpose</Heading><Text>{s.purpose||objective||s.use_cases.map(c=>c.outcome).filter(Boolean).join(' ')||'Purpose has not been established.'}</Text></VStack>
-    {rows('Core use cases',s.use_cases)}{rows('Actors and external systems',s.actors)}
+    {rows('Core use cases',s.use_cases,row=>savedCase(String(row.id))&&entry(String(row.id)))}{rows('Actors and external systems',s.actors)}
     {rows('Questions',s.questions.slice(0,3))}{rows('Source coverage',s.manifest)}
-    {rows('Current implementation',s.implementation_findings)}
+    {rows('Current implementation',s.implementation_findings,row=>['workflow','implementation'].includes(String(row.kind))&&entry(String(row.id)))}
     <RevisionDiff key={revision.id} revision={revision} names={names}/>
   </VStack>;
   if(tab==='Volatility')return <DecisionRows key={revision.id} revision={revision} names={names}/>;
@@ -70,7 +74,7 @@ export function RevisionPanel({revision,tab,objective}:{revision:Revision;tab:st
     {rows('Dependencies',s.dependencies.map(d=>({...d,display_title:(names.get(d.caller_id)||d.caller_id)+' → '+(names.get(d.callee_id)||d.callee_id)})))}
   </VStack>;
   return <VStack gap={5}><Heading level={2}>Design analysis</Heading>
-    {rows('Use case walkthroughs',s.walkthroughs.map(w=>({...w,display_title:names.get(String(w.use_case_id))})))}
+    {rows('Use case walkthroughs',s.walkthroughs.map(w=>({...w,display_title:names.get(String(w.use_case_id))})),row=>savedCase(String(row.use_case_id))&&entry(String(row.use_case_id)))}
     {rows('Predicted change containment',s.change_probes)}{rows('Review findings',s.findings)}
   </VStack>;
 }

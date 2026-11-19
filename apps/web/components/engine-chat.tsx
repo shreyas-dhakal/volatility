@@ -24,8 +24,8 @@ export function ApplyCorrection({messageId}:{messageId:string}){
     onClick={()=>start('revise',{base_revision_id:revision.id,correction_message_id:messageId})}/>;
 }
 
-export function EngineChat({objective,base,documents,jobs,refresh,openSources,messageId}:{
-  objective:string;base:string;documents:Document[];jobs:Job[];refresh:()=>Promise<void>;openSources:()=>void;messageId?:string;
+export function EngineChat({objective,base,documents,jobs,refresh,openSources,messageId,existing=false}:{
+  objective:string;base:string;documents:Document[];jobs:Job[];refresh:()=>Promise<void>;openSources:()=>void;messageId?:string;existing?:boolean;
 }){
   const engine=useEngine();
   const {state,error,busy,loadError}=engine;
@@ -103,7 +103,7 @@ export function EngineChat({objective,base,documents,jobs,refresh,openSources,me
         <TabList value={tab} onChange={setTab} role="tablist" aria-label="Design sections" size="sm" hasDivider>
           {tabs.map(name=><Tab key={name} value={name} label={name} panelId={unique+name}/>)}
         </TabList>
-        {tab!=='Project'&&<VStack id={unique+tab} role="tabpanel" aria-label={tab}><RevisionPanel revision={revision} tab={tab} objective={objective}/></VStack>}
+        {tab!=='Project'&&<VStack id={unique+tab} role="tabpanel" aria-label={tab}><RevisionPanel revision={revision} tab={tab} objective={objective} existing={existing}/></VStack>}
         <Activity mode={tab==='Project'?'visible':'hidden'}><VStack id={unique+'Project'} role="tabpanel" aria-label="Project">
           {error&&<Text role="alert">{error}</Text>}
           <ProjectPlan key={revision.id+(plan?.id??'')} revisionId={revision.id} plan={plan??null}/>

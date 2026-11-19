@@ -1,7 +1,7 @@
 'use client';
 import {displayText} from '../lib/text';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {ReactFlow,Background,Controls,MiniMap,useNodesState,type NodeProps,type OnSelectionChangeParams} from '@xyflow/react';
+import {ReactFlow,Background,Controls,Handle,Position,MarkerType,useViewportStore,useNodesState,type NodeProps,type OnSelectionChangeParams} from '@xyflow/react';
 import * as stylex from '@stylexjs/stylex';
 import {VStack,HStack,Heading,Text,TextInput,Selector,Button,FileInput,Markdown} from './ui';
 import {request} from '../lib/api';
@@ -10,8 +10,33 @@ import {AppIcon,fieldLabel,plainValue} from './workspace-ui';
 import {Search,Network,ArrowRight} from 'lucide-react';
 import type {GraphData,GraphSummary,Knowledge,Job,Source} from '../lib/types';
 const s=stylex.create({canvas:{height:'38rem',minHeight:'24rem',border:'1px solid var(--color-border)',borderRadius:'var(--radius-container)',overflow:'hidden'},detail:{borderTop:'1px solid var(--color-border)'},measure:{maxWidth:'70ch'}});
-function BoundaryGroup({data}:NodeProps){return <VStack padding={4} gap={1}><Text weight="semibold">{String(data.label)}</Text><Text type="supporting">Proposed part · select for details</Text></VStack>}
-const nodeTypes={boundaryGroup:BoundaryGroup};
+function BoundaryGroup({data}:NodeProps){
+ const size=Number(data.diameter),r=size/2;
+ return <svg width={size} height={size} aria-hidden="true">
+   <circle cx={r} cy={r} r={r-1} fill="var(--color-background-purple)" fillOpacity={0.4} stroke="var(--color-border-purple)" strokeDasharray="4 5"/>
+   <text x={r} y={20} textAnchor="middle" fill="var(--color-text-purple)" fontSize={12}>{String(data.label)}</text>
+ </svg>;
+}
+function NetworkPoint({data,selected}:NodeProps){
+ const [hover,setHover]=useState(false);
+ const zoom=useViewportStore(state=>Math.max(0.15,Math.round(state.transform[2]*20)/20));
+ const fontSize=Math.max(12,11/zoom);
+ const label=String(data.label),radius=Number(data.radius),color=`var(--color-icon-${data.color})`;
+ const visible=hover||selected||zoom>=1.25||Boolean(data.overviewLabel);
+ return <>
+   <Handle type="target" position={Position.Top} isConnectable={false} style={{top:20-radius,opacity:0}}/>
+   <svg width={40} height={40} overflow="visible" aria-hidden="true" onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+     <title>{label}</title>
+     <circle cx={20} cy={20} r={20} fill="transparent"/>
+     {(selected||hover)&&<circle cx={20} cy={20} r={radius+4} fill="none" stroke={color} strokeWidth={1.5}/>}
+     <circle cx={20} cy={20} r={radius} fill={color} stroke="var(--color-background-body)" strokeWidth={2}/>
+     {visible && <text x={20} y={24+radius+fontSize} textAnchor="middle" fill="var(--color-text-primary)" fontSize={fontSize} fontWeight={selected?650:500}
+       stroke="var(--color-background-body)" strokeWidth={fontSize/3} paintOrder="stroke" pointerEvents="none">{label.length>24&&!hover&&!selected?label.slice(0,23)+'…':label}</text>}
+   </svg>
+   <Handle type="source" position={Position.Bottom} isConnectable={false} style={{bottom:20-radius,opacity:0}}/>
+ </>;
+}
+const nodeTypes={boundaryGroup:BoundaryGroup,networkPoint:NetworkPoint};
 function DetailFields({value}:{value:unknown}){
  if(value==null)return null;
  if(typeof value!=='object')return <Text>{typeof value==='string'?plainValue(value):typeof value==='boolean'?(value?'Yes':'No'):String(value)}</Text>;
@@ -82,6 +107,14 @@ export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositori
  const adapted=useMemo(()=>data?adaptGraph(data):{nodes:[],edges:[],boundaries:[]},[data]);
  const [flowNodes,setFlowNodes,onNodesChange]=useNodesState(adapted.nodes);
  useEffect(()=>{setFlowNodes(adapted.nodes)},[adapted.nodes,setFlowNodes]);
+ const selectedNode=flowNodes.find(n=>n.selected)?.id;
+ const visibleEdges=useMemo(()=>adapted.edges.map(edge=>{
+   if(!selectedNode)return edge;
+   const incident=edge.source===selectedNode||edge.target===selectedNode;
+   return {...edge,label:incident?String(edge.data?.relation):undefined,
+     markerEnd:incident?{type:MarkerType.ArrowClosed,color:'var(--color-icon-teal)'}:undefined,
+     style:{...edge.style,opacity:incident?1:0.14,stroke:incident?'var(--color-icon-teal)':edge.style?.stroke}};
+ }),[adapted.edges,selectedNode]);
  const inspect=useCallback(async(nodeId:string)=>{if(!data)return;const local=localNodeDetail(nodeId,data,records);if(local){setTechnicalDetail(false);setDetail(local);return}try{setDetail(await request(`${base}/graphs/${selected}/nodes/${encodeURIComponent(nodeId)}`));setTechnicalDetail(true);setFocus(nodeId)}catch(e){onError((e as Error).message)}},[data,records,base,selected,onError]);
  const onSelection=useCallback(({nodes}:OnSelectionChangeParams)=>{if(nodes[0])void inspect(nodes[0].id)},[inspect]);
  if(!graphs.length)return <VStack gap={4}><Heading level={1}>Code map</Heading>
@@ -92,7 +125,7 @@ export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositori
  </VStack>;
  return <VStack gap={5}>
  <Heading level={1}>Code map</Heading>
- <Text color="secondary" xstyle={s.measure}>See how your code connects. Select a part to view its details and sources.</Text>
+ <Text color="secondary" xstyle={s.measure}>Larger nodes have more connections. Select a node to trace its links, or zoom in to read more names.</Text>
  {archiveInput}
  {buildControls}
  {currentGraph?.metadata?.generator==='graphify' && <VStack gap={2}>
@@ -102,7 +135,7 @@ export function GraphWorkspace({base,graphs:allGraphs,records,onError,repositori
  <HStack gap={4} wrap="wrap"><HStack gap={2} vAlign="center"><AppIcon icon={Network} color="purple"/><Text type="supporting">Proposed parts</Text></HStack><HStack gap={2} vAlign="center"><AppIcon icon={Network} color="orange"/><Text type="supporting">Related to a change</Text></HStack><Text type="supporting" color="secondary">Dashed connections need checking.</Text></HStack>
  <HStack gap={3} wrap="wrap"><Selector label="Code map" value={selected} onChange={setId} options={graphs.map(g=>({value:g.id,label:displayText(g.name)}))}/><Selector label="Reason for change" value={driver} onChange={setDriver} options={[{value:'',label:'All changes'},...records.filter(r=>r.kind==='driver').map(r=>({value:r.id,label:displayText(r.title)}))]}/><Selector label="Compare design" value={candidate} onChange={setCandidate} options={[{value:'',label:'Current system'},...records.filter(r=>r.kind==='architecture').map(r=>({value:r.id,label:displayText(r.title)}))]}/></HStack>
  <HStack gap={3} vAlign="end" wrap="wrap"><TextInput label="Find code" value={query} onChange={setQuery} onEnter={load} placeholder="Name or file path"/><Selector label="Show nearby code" value={focus} onChange={setFocus} options={[{value:'',label:'All parts'},...(data?.nodes||[]).filter(n=>!n.id.startsWith('business:')).map(n=>({value:n.id,label:displayText(n.label)}))]}/><Button label="Show results" icon={<AppIcon icon={Search} color="blue"/>} isLoading={loading} onClick={load}/></HStack>
- <VStack xstyle={s.canvas}><ReactFlow nodes={flowNodes} onNodesChange={onNodesChange} onNodeClick={(_,node)=>{void inspect(node.id)}} edges={adapted.edges} nodeTypes={nodeTypes} fitView fitViewOptions={{padding:0.2}} minZoom={0.15} key={`${selected}:${candidate}:${driver}:${adapted.nodes.map(n=>n.id).join(',')}`} onSelectionChange={onSelection}><Background/><Controls/><MiniMap/></ReactFlow></VStack>
+ <VStack xstyle={s.canvas}><ReactFlow nodes={flowNodes} onNodesChange={onNodesChange} onNodeClick={(_,node)=>{void inspect(node.id)}} edges={visibleEdges} nodeTypes={nodeTypes} fitView fitViewOptions={{padding:0.16,maxZoom:1.15}} minZoom={0.15} key={`${selected}:${candidate}:${driver}:${adapted.nodes.map(n=>n.id).join(',')}`} onSelectionChange={onSelection}><Background/><Controls/></ReactFlow></VStack>
  {data&&<Text type="supporting" color="secondary">Showing {data.nodes.length} parts and {data.edges.length} connections.</Text>}
  {adapted.boundaries.length>0&&<VStack gap={4}><Heading level={2}>Proposed parts</Heading>{adapted.boundaries.map(b=><VStack key={b.name} gap={2} paddingBlock={3} xstyle={s.detail}><Heading level={3}>{b.name}</Heading><Text>{b.responsibility||'Purpose needs review.'}</Text><Text>What stays the same: {b.stable_contract||'Not known yet'}</Text><Text type="supporting" color="secondary">{b.node_ids?.length||0} related code parts · needs review</Text><Button icon={<AppIcon icon={Search} color="purple"/>} label={displayText(`View ${b.name}`)} variant="ghost" onClick={()=>{setTechnicalDetail(false);setDetail(b)}}/></VStack>)}</VStack>}
  {detail!=null&&<VStack gap={4} paddingBlock={4} xstyle={s.detail} aria-live="polite"><Heading level={2}>Sources & connections</Heading><Button label="Show nearby parts" icon={<AppIcon icon={Network} color={technicalDetail?'teal':'disabled'}/>} isDisabled={!focus||!technicalDetail} onClick={load}/><DetailFields value={detail}/></VStack>}
